@@ -17,6 +17,7 @@ int expr_id();
 class expr_context {
     public:
         expr_context() {}
+        void write(FILE *out);
 
         template <typename T>
         void add_thing(const string &name, const string &type, T *func) {
@@ -25,7 +26,6 @@ class expr_context {
             values.push_back((void*(*))func);
         }
 
-        void write(FILE *out);
     private:
         vector<const string> names;
         vector<const string> types;
@@ -35,9 +35,22 @@ class expr_context {
 template<typename T>
 class expr {
     public:
+        expr() { handle = 0; func = 0; }
         expr(expr_context &ctx, const string&);
         ~expr();
-        T eval() { return func(); }
+        T eval() { 
+            T x;
+            if (func) x = func();
+            return x;
+        }
+        expr &operator=(expr &&e) {
+            this->handle = e.handle;
+            this->func = e.func;
+            e.handle = 0;
+            e.func = 0;
+            return *this;
+        }
+
     private:
         void *handle;
         T (*func)();
@@ -55,9 +68,11 @@ expr<T>::expr(expr_context &ctx, const string &expr) {
     string cmd = "gcc -shared -fPIC -xc -o " + lib_name + " -";
     FILE *gcc = popen(cmd.c_str(), "w");
 
-    fprintf(gcc, "#include <math.h>\n");
+    fprintf(gcc, "#include <stdlib.h>\n");
+    printf("#include <stdlib.h>\n");
     ctx.write(gcc);
-    fprintf(gcc, "%s %s() { return %s ; }", type_name, func_name.c_str(), expr.c_str());
+    fprintf(gcc, "%s %s() { return %s ; }\n", type_name, func_name.c_str(), expr.c_str());
+    printf("%s %s() { return %s ; }\n", type_name, func_name.c_str(), expr.c_str());
     free(type_name);
 
     if (pclose(gcc) != 0) {

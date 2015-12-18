@@ -11,8 +11,10 @@ int expr_id() {
 
 void expr_context::write(FILE *out) {
     for (size_t i = 0; i < names.size(); ++i) {
-        fprintf(out, "static %s(*hack_%s)() = (%s(*)()) %p;\n", 
+        fprintf(out, "static %s(*%s)() = (%s(*)()) %p;\n", 
                 types[i].c_str(), names[i].c_str(), types[i].c_str(), values[i]);
-        fprintf(out, "#define %s (hack_%s())\n", names[i].c_str(), names[i].c_str());
+        printf("static %s(*%s)() = (%s(*)()) %p;\n", 
+                types[i].c_str(), names[i].c_str(), types[i].c_str(), values[i]);
+        //fprintf(out, "#define %s (hack_%s())\n", names[i].c_str(), names[i].c_str());
     }
 }

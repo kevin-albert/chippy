@@ -1,7 +1,7 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
 LDFLAGS	= 
-SRC		= test.cpp expr.cpp
+SRC		= main.cpp controller.cpp expr.cpp pcm_wrapper.cpp
 OBJ		= $(SRC:.cpp=.o)
 
 test: $(OBJ)

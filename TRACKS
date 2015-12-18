@@ -1,0 +1,6 @@
+t1 i1 sin()
+t1 i2 sqr() * 0.67
+
+t2 i1 saw()
+t2 i2 saw(2)
+t2 t3 saw(3)
