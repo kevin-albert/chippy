@@ -9,27 +9,33 @@
 #include <stdexcept>
 #include <typeinfo>
 #include <cxxabi.h>
+#include <typeindex>
 #include <sstream>
 #include <iomanip>
 
 int expr_id();
+string demangle(const string &name);
+void print_types(ostream &out, initializer_list<type_index> types);
 
 class expr_context {
     public:
         expr_context() {}
         void write(FILE *out);
 
-        template <typename T>
-        void add_thing(const string &name, const string &type, T *func) {
-            names.push_back(name);
-            types.push_back(type);
-            values.push_back((void*(*))func);
+        template <typename T, typename ... ARGS>
+        void define(const string &name, T (*func)(ARGS...)) {
+            stringstream line;
+            line << "static " << demangle(typeid(T).name()) 
+                 << "(*" << name << ")(";
+            print_types(line, {typeid(ARGS)...});
+            line << ") = (" << demangle(typeid(T).name()) << "(*)(";
+            print_types(line, {typeid(ARGS)...});
+            line << ")) " << hex << reinterpret_cast<void*>(func) << ";";
+            lines.push_back(line.str());
         }
 
     private:
-        vector<const string> names;
-        vector<const string> types;
-        vector<void*(*)> values;
+        vector<string> lines;
 };
 
 template<typename T>
@@ -39,10 +45,9 @@ class expr {
         expr(expr_context &ctx, const string&);
         ~expr();
         T eval() { 
-            T x;
-            if (func) x = func();
-            return x;
+            return func ? func() : 0;
         }
+
         expr &operator=(expr &&e) {
             this->handle = e.handle;
             this->func = e.func;
@@ -62,18 +67,16 @@ expr<T>::expr(expr_context &ctx, const string &expr) {
     func_name_str << "hack__" << hex << expr_id();
     string func_name(func_name_str.str());
     string lib_name = "/tmp/" + func_name + ".so";
-    char *type_name = abi::__cxa_demangle(typeid(T).name(), 0, 0, 0);
+
+    string type_name = demangle(typeid(T).name());
 
     fflush(0);
     string cmd = "gcc -shared -fPIC -xc -o " + lib_name + " -";
     FILE *gcc = popen(cmd.c_str(), "w");
 
     fprintf(gcc, "#include <stdlib.h>\n");
-    printf("#include <stdlib.h>\n");
     ctx.write(gcc);
-    fprintf(gcc, "%s %s() { return %s ; }\n", type_name, func_name.c_str(), expr.c_str());
-    printf("%s %s() { return %s ; }\n", type_name, func_name.c_str(), expr.c_str());
-    free(type_name);
+    fprintf(gcc, "%s %s() { return %s ; }\n", type_name.c_str(), func_name.c_str(), expr.c_str());
 
     if (pclose(gcc) != 0) {
         throw invalid_argument("cannot compile expr");

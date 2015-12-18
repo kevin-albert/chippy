@@ -5,7 +5,8 @@ using namespace std;
 
 void pcm_write(uint8_t *buffer, int length) {
     for (int i = 0; i < length; ++i) {
-        for (uint8_t j = 0; j < buffer[i] / 4; ++j) {
+        cout << "+";
+        for (int j = 0; j < buffer[i]; j += 2) {
             cout << " ";
         }
         cout << ".\n";

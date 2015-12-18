@@ -1,4 +1,4 @@
-#include <vector>
+#include <string>
 #include <cmath>
 
 using namespace std;
@@ -10,38 +10,39 @@ class track {
     public:
         track() {}
         void add_instrument(int, const string&);
-        expr<uint8_t> &operator[](size_t idx) {
+        expr<float> &operator[](size_t idx) {
             return instruments[idx];
         }
         float volume {1};
     private:
-        expr<uint8_t> instruments[4];
+        expr<float> instruments[4];
 };
 
 track tracks[8];
 expr_context ctx;
 bool is_init {false};
 
-double t {0};
-double f {0};
+static double t {0};
+static double f {0};
+static double w {0};
 
-uint8_t w_sin() {
-    return 0xf0 * (1 + sin(t * f));
+float w_sin(float m) {
+    return sin(w * m);
 }
 
-uint8_t w_saw() {
-    return 0xff * ((t * f) - (int) (t * f));
+float w_saw(float m) {
+    return (w * m) - (int) (w * m);
 }
 
-uint8_t w_sqr() {
-    return w_sin() > 0xf0 ? 0xff : 0x0;
+float w_sqr(float m) {
+    return w_sin(m) > 0 ? 1 : -1;
 }
 
 void init() {
     if (!is_init) {
-        ctx.add_thing("sin", "uint8_t", w_sin);
-        ctx.add_thing("saw", "uint8_t", w_saw);
-        ctx.add_thing("sqr", "uint8_t", w_sqr);
+        ctx.define("sin", w_sin);
+        ctx.define("saw", w_saw);
+        ctx.define("sqr", w_sqr);
         is_init = true;
     }
 }
@@ -51,7 +52,7 @@ void track::add_instrument(int inst, const string &ex) {
     if (inst < 0 || inst > 4) {
         throw invalid_argument("invalid instrument index");
     }
-    instruments[inst] = expr<uint8_t>(ctx, ex);
+    instruments[inst] = expr<float>(ctx, ex);
 }
 
 void setup_instrument(int track, int inst, const string &ex) {
@@ -65,16 +66,18 @@ void go() {
     init();
     cout << "go\n";
     uint8_t buffer[200];
-    f = 440;
+    f = 220;
     for (int i = 0; i < 200; ++i) {
-        uint8_t val = 0xf0;
+        w = t * f * M_PI * 2;
+        float val = 0;
         for (int j = 0; j < 8; ++j) {
+            float volume = tracks[j].volume;
             for (int k = 0; k < 4; ++k) {
-                val += (tracks[j][k].eval() - 0xf0) * tracks[j].volume;
+                val += tracks[j][k].eval();
             }
         }
-        buffer[i] = val;
-        t += 0.1;
+        buffer[i] = val > 1 ? 0xff : val < -1 ? 0x0 : (uint8_t) (0x80 * (val+1));
+        t += 0.0001;
     }
     pcm_write(buffer, 200);
 }
