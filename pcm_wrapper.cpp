@@ -7,6 +7,8 @@
   static std::string device = "default";
   static snd_output_t *output = 0;
   static snd_pcm_t *handle;
+  static int err;
+  static struct pollfd ufds;
 #endif
 
 using namespace std;
@@ -14,9 +16,61 @@ using namespace std;
 
 uint8_t audio_buffer[BUFFER_LEN];
 
+#ifdef __linux__
+static void xrun_recovery() {
+    if (err == -EPIPE) {    
+        // under-run
+        snd_pcm_prepare(handle);
+        err = 0;
+    } else if (err == -ESTRPIPE) {
+        // wait until the suspend flag is released 
+        while ((err = snd_pcm_resume(handle)) == -EAGAIN)
+            sleep(1);       
+        if (err < 0) {
+            snd_pcm_prepare(handle);
+        }
+        err = 0;
+    }
+}
+
+static void wait_for_poll() {
+    if ((err = snd_pcm_poll_descriptors(handle, &ufds, count)) < 0) {
+        throw runtime_error("unable to obtain poll descriptors for playback: " + string(snd_strerror(err)));
+    }
+
+    uint16_t revents;
+    while (1) {
+        poll(ufds, count, -1);
+        snd_pcm_poll_descriptors_revents(handle, &ufds, count, &revents);
+        if (revents & POLLERR) {
+            if (err < 0) {
+                if (snd_pcm_state(handle) == SND_PCM_STATE_XRUN ||
+                    snd_pcm_state(handle) == SND_PCM_STATE_SUSPENDED) {
+                    err = snd_pcm_state(handle) == SND_PCM_STATE_XRUN ? -EPIPE : -ESTRPIPE;
+                    xrun_recovery();
+                    if (err < 0) {
+                        throw runtime_error("write error: " + string(snd_strerror(err)));
+                    }
+                    init = 1;
+                } else {
+                    printf("Wait for poll failed\n");
+                    return err;
+                }
+            }
+            xrun_recovery();
+            if (err < 0) {
+                throw runtime_error("unable to poll: " + string(snd_strerror(err)));
+            }
+        }
+        if (revents & POLLOUT)
+            break;
+    }
+}
+
+#endif
+
 void pcm_open(void) {
 #ifdef __linux__
-    int err;
     if ((err = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         throw runtime_error("unable to open PCM device: " + string(snd_strerror(err)));
     }
@@ -38,17 +92,21 @@ void pcm_open(void) {
 
 
 void pcm_write() {
+
 #ifdef __linux__
-    cout << "writing audio to device\n";
-    snd_pcm_sframes_t frames = snd_pcm_writei(handle, audio_buffer, BUFFER_LEN);
-    if (frames < 0) {
-        frames = snd_pcm_recover(handle, frames, 0);
+
+    wait_for_poll();
+
+    int len = BUFFER_LEN;
+    while (len) {
+        snd_pcm_sframes_t frames = snd_pcm_writei(handle, audio_buffer, BUFFER_LEN);
         if (frames < 0) {
-            throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
+            frames = snd_pcm_recover(handle, frames, 0);
+            if (frames < 0) {
+                throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
+            }
         }
-    }
-    if (frames < BUFFER_LEN) {
-        throw runtime_error("unable to write some PCM data");
+        len -= frames;
     }
 #else
     for (int i = 0; i < BUFFER_LEN; ++i) {
