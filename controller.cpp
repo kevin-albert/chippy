@@ -75,7 +75,8 @@ void go() {
     f = 220;
     for (int i = 0; i < 10; ++i) {
         for (int i = 0; i < BUFFER_LEN; ++i) {
-            w = t * f * M_PI * 2 / SAMPLE_FREQUENCY;
+            t = (double) frame / SAMPLE_FREQUENCY;
+            w = t * f * M_PI * 2;
             float val = 0;
             for (int j = 0; j < 8; ++j) {
                 if (tracks[j].enabled) {
@@ -87,7 +88,6 @@ void go() {
             }
             audio_buffer[i] = val > 1 ? 0xff : val < -1 ? 0x0 : (uint8_t) (0x80 * (val+1));
             ++frame;
-            t = (double) frame / BUFFER_LEN;
         }
         pcm_write();
     }

@@ -6,7 +6,7 @@
 #ifdef __linux__
   #define BUFFER_LEN 4800
 #else
-  #define BUFFER_LEN 100
+  #define BUFFER_LEN 4800
 #endif
 
 extern uint8_t audio_buffer[BUFFER_LEN];
