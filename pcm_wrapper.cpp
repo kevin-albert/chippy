@@ -38,7 +38,7 @@ static void wait_for_poll() {
         throw runtime_error("invalid poll descriptors count");
     }
 
-    static struct pollfd *ufds = alloca(count * sizeof *ufds);
+    static struct pollfd *ufds = (struct pollfd*) alloca(count * sizeof *ufds);
     if ((err = snd_pcm_poll_descriptors(handle, ufds, count)) < 0) {
         throw runtime_error("unable to obtain poll descriptors for playback: " + string(snd_strerror(err)));
     }
