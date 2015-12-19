@@ -73,7 +73,7 @@ void go() {
     cout << "go\n";
     
     f = 220;
-    for (int i = 0; i < 10; ++i) {
+    for (int n = 0; n < 10; ++n) {
         for (int i = 0; i < BUFFER_LEN; ++i) {
             t = (double) frame / SAMPLE_FREQUENCY;
             w = t * f * M_PI * 2;
