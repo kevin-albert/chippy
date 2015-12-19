@@ -77,8 +77,6 @@ void pcm_open(void) {
                                   500000)) < 0) {   
         throw runtime_error("unable to set PCM params: " + string(snd_strerror(err)));
     }
-#else
-    cout << "pcm_open();\n";
 #endif
 }
 
@@ -119,24 +117,12 @@ void pcm_write() {
         wait_for_poll(ufds, fdcount);
         need_poll = false;
     }
-
-#else
-
-    for (int i = 0; i < BUFFER_LEN; ++i) {
-        cout << "+";
-        for (int j = 0; j < audio_buffer[i]; j += 2) {
-            cout << " ";
-        }
-        cout << ".\n";
-    }
 #endif
 }
 
 void pcm_close() {
 #ifdef __linux__
     snd_pcm_close(handle);
-#else
-    cout << "pcm_close()\n";
 #endif
 }
 

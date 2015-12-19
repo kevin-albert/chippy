@@ -71,7 +71,7 @@ expr<T>::expr(expr_context &ctx, const string &expr) {
     string type_name = demangle(typeid(T).name());
 
     fflush(0);
-    string cmd = "gcc -shared -fPIC -xc -o " + lib_name + " -";
+    string cmd = "gcc -shared -fPIC -xc -o " + lib_name + " - >/dev/null 2>/dev/null";
     FILE *gcc = popen(cmd.c_str(), "w");
 
     fprintf(gcc, "#include <stdlib.h>\n");
