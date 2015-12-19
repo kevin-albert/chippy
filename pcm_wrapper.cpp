@@ -8,7 +8,6 @@
   static snd_output_t *output = 0;
   static snd_pcm_t *handle;
   static int err;
-  static struct pollfd ufds;
 #endif
 
 using namespace std;
@@ -34,14 +33,20 @@ static void xrun_recovery() {
 }
 
 static void wait_for_poll() {
-    if ((err = snd_pcm_poll_descriptors(handle, &ufds, count)) < 0) {
+    int count = snd_pcm_poll_descriptors_count(handle);
+    if (count <= 0) {
+        throw runtime_error("invalid poll descriptors count");
+    }
+
+    static struct pollfd *ufds = alloca(count * sizeof *ufds);
+    if ((err = snd_pcm_poll_descriptors(handle, ufds, count)) < 0) {
         throw runtime_error("unable to obtain poll descriptors for playback: " + string(snd_strerror(err)));
     }
 
     uint16_t revents;
     while (1) {
         poll(ufds, count, -1);
-        snd_pcm_poll_descriptors_revents(handle, &ufds, count, &revents);
+        snd_pcm_poll_descriptors_revents(handle, ufds, count, &revents);
         if (revents & POLLERR) {
             if (err < 0) {
                 if (snd_pcm_state(handle) == SND_PCM_STATE_XRUN ||
@@ -51,10 +56,8 @@ static void wait_for_poll() {
                     if (err < 0) {
                         throw runtime_error("write error: " + string(snd_strerror(err)));
                     }
-                    init = 1;
                 } else {
-                    printf("Wait for poll failed\n");
-                    return err;
+                    throw runtime_error("wait for poll failed: " + string(snd_strerror(err)));
                 }
             }
             xrun_recovery();
