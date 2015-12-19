@@ -111,8 +111,9 @@ void pcm_write() {
     wait_for_poll();
 
     int len = BUFFER_LEN;
+    uint8_t *buffer = audio_buffer;
     while (len) {
-        snd_pcm_sframes_t frames = snd_pcm_writei(handle, audio_buffer, BUFFER_LEN);
+        snd_pcm_sframes_t frames = snd_pcm_writei(handle, buffer, BUFFER_LEN);
         if (frames < 0) {
             frames = snd_pcm_recover(handle, frames, 0);
             if (frames < 0) {
@@ -120,6 +121,7 @@ void pcm_write() {
             }
         }
         len -= frames;
+        buffer += frames;
     }
 #else
     for (int i = 0; i < BUFFER_LEN; ++i) {
