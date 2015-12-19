@@ -2,9 +2,9 @@
 #define pcm_wrapper_h
 
 #include <cstdlib>
-#define SAMPLE_FREQUENCY 44100
+#define SAMPLE_FREQUENCY 48000
 #ifdef __linux__
-  #define BUFFER_LEN 4410
+  #define BUFFER_LEN 4800
 #else
   #define BUFFER_LEN 100
 #endif

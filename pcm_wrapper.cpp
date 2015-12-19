@@ -113,6 +113,10 @@ void pcm_write() {
         len -= frames;
         buffer += frames;
     }
+
+    for (int i = 0; i < BUFFER_LEN; ++i) {
+        cout << (int) audio_buffer[i] << endl;
+    }
 #else
     for (int i = 0; i < BUFFER_LEN; ++i) {
         cout << "+";
