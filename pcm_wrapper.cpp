@@ -101,8 +101,7 @@ void pcm_write() {
 
     int len = BUFFER_LEN;
     uint8_t *buffer = audio_buffer;
-    while (len) {
-        wait_for_poll(ufds, fdcount);
+    while (1) {
         snd_pcm_sframes_t frames = snd_pcm_writei(handle, buffer, BUFFER_LEN);
         if (frames < 0) {
             frames = snd_pcm_recover(handle, frames, 0);
@@ -110,8 +109,12 @@ void pcm_write() {
                 throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
             }
         }
+
         len -= frames;
         buffer += frames;
+        if (len <= 0) 
+            break;
+        wait_for_poll(ufds, fdcount);
     }
 
 #else
