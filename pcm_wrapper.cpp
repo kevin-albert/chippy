@@ -83,7 +83,7 @@ void pcm_open(void) {
 }
 
 
-
+static bool need_poll = false;
 void pcm_write() {
 
 #ifdef __linux__
@@ -98,7 +98,6 @@ void pcm_write() {
         throw runtime_error("unable to obtain poll descriptors for playback: " + string(snd_strerror(err)));
     }
 
-
     int len = BUFFER_LEN;
     uint8_t *buffer = audio_buffer;
     while (1) {
@@ -109,12 +108,16 @@ void pcm_write() {
                 throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
             }
         }
+        if (snd_pcm_state(handle) == SND_PCM_STATE_RUNNING)
+            need_poll = true;
 
         len -= frames;
         buffer += frames;
         if (len <= 0) 
             break;
+
         wait_for_poll(ufds, fdcount);
+        need_poll = false;
     }
 
 #else
