@@ -32,11 +32,11 @@ static void xrun_recovery() {
     }
 }
 
-static void wait_for_poll(struct polldf *ufds, int fdcount) {
+static void wait_for_poll(struct pollfd *ufds, int fdcount) {
     uint16_t revents;
     while (1) {
-        poll(ufds, count, -1);
-        snd_pcm_poll_descriptors_revents(handle, ufds, count, &revents);
+        poll(ufds, fdcount, -1);
+        snd_pcm_poll_descriptors_revents(handle, ufds, fdcount, &revents);
         if (revents & POLLERR) {
             if (err < 0) {
                 if (snd_pcm_state(handle) == SND_PCM_STATE_XRUN ||
