@@ -3,7 +3,7 @@
 
 #include <cstdlib>
 #define SAMPLE_FREQUENCY 44100
-#ifdef linux
+#ifdef __linux__
   #define BUFFER_LEN 4410
 #else
   #define BUFFER_LEN 100

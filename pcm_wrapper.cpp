@@ -1,10 +1,10 @@
 #include <iostream>
 #include <string>
 
-#ifdef linux
+#ifdef __linux__
   #include <alsa/asoundlib.h>
   #include <alsa/pcm.h>
-  static const string device = "default";
+  static std::string device = "default";
   static snd_output_t *output = 0;
   static snd_pcm_t *handle;
 #endif
@@ -15,10 +15,10 @@ using namespace std;
 uint8_t audio_buffer[BUFFER_LEN];
 
 void pcm_open(void) {
-#ifdef linux
+#ifdef __linux__
     int err;
-    if ((err = snd_pcm_open(&handle, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-        throw runtime_error("unable to open PCM device: " + snd_strerror(err));
+    if ((err = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        throw runtime_error("unable to open PCM device: " + string(snd_strerror(err)));
     }
 
     if ((err = snd_pcm_set_params(handle,
@@ -28,7 +28,7 @@ void pcm_open(void) {
                                   SAMPLE_FREQUENCY,
                                   1,
                                   500000)) < 0) {   
-        throw runtime_error("unable to set PCM params: " + snd_strerror(err));
+        throw runtime_error("unable to set PCM params: " + string(snd_strerror(err)));
     }
 #else
     cout << "pcm_open();\n";
@@ -38,12 +38,12 @@ void pcm_open(void) {
 
 
 void pcm_write() {
-#ifdef linux
+#ifdef __linux__
     snd_pcm_sframes_t frames = snd_pcm_writei(handle, audio_buffer, BUFFER_LEN);
     if (frames < 0) {
         frames = snd_pcm_recover(handle, frames, 0);
         if (frames < 0) {
-            throw runtime_error("unable to write PCM data: " + snd_strerror(frames));
+            throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
         }
     }
     if (frames < BUFFER_LEN) {
@@ -61,7 +61,7 @@ void pcm_write() {
 }
 
 void pcm_close() {
-#ifdef linux
+#ifdef __linux__
     snd_pcm_close(handle);
 #else
     cout << "pcm_close()\n";
