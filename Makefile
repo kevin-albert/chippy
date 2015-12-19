@@ -1,6 +1,6 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
-LDFLAGS	= 
+LDFLAGS	= -ldl
 SRC		= main.cpp controller.cpp expr.cpp pcm_wrapper.cpp pattern.cpp
 OBJ		= $(SRC:.cpp=.o)
 
