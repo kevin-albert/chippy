@@ -73,22 +73,24 @@ void go() {
     cout << "go\n";
     
     f = 220;
-    for (int i = 0; i < BUFFER_LEN; ++i) {
-        w = t * f * M_PI * 2 / SAMPLE_FREQUENCY;
-        float val = 0;
-        for (int j = 0; j < 8; ++j) {
-            if (tracks[j].enabled) {
-                float volume = tracks[j].volume;
-                for (int k = 0; k < 4; ++k) {
-                    val += tracks[j][k].eval();
+    for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < BUFFER_LEN; ++i) {
+            w = t * f * M_PI * 2 / SAMPLE_FREQUENCY;
+            float val = 0;
+            for (int j = 0; j < 8; ++j) {
+                if (tracks[j].enabled) {
+                    float volume = tracks[j].volume;
+                    for (int k = 0; k < 4; ++k) {
+                        val += tracks[j][k].eval();
+                    }
                 }
             }
+            audio_buffer[i] = val > 1 ? 0xff : val < -1 ? 0x0 : (uint8_t) (0x80 * (val+1));
+            ++frame;
+            t = (double) frame / BUFFER_LEN;
         }
-        audio_buffer[i] = val > 1 ? 0xff : val < -1 ? 0x0 : (uint8_t) (0x80 * (val+1));
-        ++frame;
-        t = (double) frame / BUFFER_LEN;
+        pcm_write();
     }
-    pcm_write();
     pcm_close();
 }
 

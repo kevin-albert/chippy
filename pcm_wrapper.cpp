@@ -39,6 +39,7 @@ void pcm_open(void) {
 
 void pcm_write() {
 #ifdef __linux__
+    cout << "writing audio to device\n";
     snd_pcm_sframes_t frames = snd_pcm_writei(handle, audio_buffer, BUFFER_LEN);
     if (frames < 0) {
         frames = snd_pcm_recover(handle, frames, 0);
