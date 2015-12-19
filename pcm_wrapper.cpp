@@ -17,11 +17,14 @@ uint8_t audio_buffer[BUFFER_LEN];
 
 #ifdef __linux__
 static void xrun_recovery() {
+    cout << "xrun_recovery\n";
     if (err == -EPIPE) {    
+        cout << "underrun\n";
         // under-run
         snd_pcm_prepare(handle);
         err = 0;
     } else if (err == -ESTRPIPE) {
+        cout << "suspended\n";
         // wait until the suspend flag is released 
         while ((err = snd_pcm_resume(handle)) == -EAGAIN)
             sleep(1);       
@@ -33,21 +36,27 @@ static void xrun_recovery() {
 }
 
 static void wait_for_poll() {
+    cout << "get pd count\n";
     int count = snd_pcm_poll_descriptors_count(handle);
     if (count <= 0) {
         throw runtime_error("invalid poll descriptors count");
     }
 
-    static struct pollfd *ufds = (struct pollfd*) alloca(count * sizeof *ufds);
+    cout << "allocate pd's\n";
+    static struct pollfd *ufds = (struct pollfd*) malloc(count * sizeof(struct pollfd));
+    cout << "get pd's\n";
     if ((err = snd_pcm_poll_descriptors(handle, ufds, count)) < 0) {
         throw runtime_error("unable to obtain poll descriptors for playback: " + string(snd_strerror(err)));
     }
-
+    cout << "got " << count << " pd's\n";
     uint16_t revents;
     while (1) {
+        cout << "poll\n";
         poll(ufds, count, -1);
+        cout << "revents\n";
         snd_pcm_poll_descriptors_revents(handle, ufds, count, &revents);
         if (revents & POLLERR) {
+            cout << "POLLERR\n";
             if (err < 0) {
                 if (snd_pcm_state(handle) == SND_PCM_STATE_XRUN ||
                     snd_pcm_state(handle) == SND_PCM_STATE_SUSPENDED) {
@@ -74,6 +83,7 @@ static void wait_for_poll() {
 
 void pcm_open(void) {
 #ifdef __linux__
+    cout << "pcm_open\n";
     if ((err = snd_pcm_open(&handle, device.c_str(), SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
         throw runtime_error("unable to open PCM device: " + string(snd_strerror(err)));
     }
