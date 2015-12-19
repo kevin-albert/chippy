@@ -2,7 +2,17 @@
 #define pcm_wrapper_h
 
 #include <cstdlib>
+#define SAMPLE_FREQUENCY 44100
+#ifdef linux
+  #define BUFFER_LEN 4410
+#else
+  #define BUFFER_LEN 100
+#endif
 
-void pcm_write(uint8_t *buffer, int length);
+extern uint8_t audio_buffer[BUFFER_LEN];
+
+void pcm_open(void);
+void pcm_write(void);
+void pcm_close(void);
 
 #endif
