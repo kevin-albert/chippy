@@ -1,5 +1,6 @@
 #include <string>
 #include <cmath>
+#include <bitset>
 
 using namespace std;
 #include "controller.h"
@@ -14,6 +15,8 @@ class track {
             return instruments[idx];
         }
         float volume {1};
+        bitset<127> notes; 
+        bool enabled {true};
     private:
         expr<float> instruments[4];
 };
@@ -66,6 +69,7 @@ void go() {
     init();
     cout << "go\n";
     uint8_t buffer[200];
+    
     f = 220;
     for (int i = 0; i < 200; ++i) {
         w = t * f * M_PI * 2;
