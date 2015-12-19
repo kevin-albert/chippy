@@ -12,6 +12,9 @@ endif
 test: $(OBJ)
 	$(CC) $(LDFLAGS) $^ -o $@
 
+deploy:
+	git push device master
+
 $(OBJ): %.o: %.cpp
 	$(CC) $(CFLAGS) $< -o $@
 
