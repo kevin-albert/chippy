@@ -9,6 +9,9 @@ using namespace std;
 #include "track.h"
 #include "controller.h"
 
+#define MIXER_VIEW      1
+#define SEQUENCER_VIEW  2
+
 string logo[] = {
 "   _____ _    _ _____ _____  _______     __",
 "  / ____| |  | |_   _|  __ \\|  __ \\ \\   / /",
@@ -24,8 +27,10 @@ void onsignal(int);
 void cleanup(void);
 void save_and_quit(void);
 void update(void);
-void (*tracks_window(void))();
-void (*patterns_window(void))();
+
+int mixer_view(void);
+int sequencer_view(void);
+
 
 bool load_pattern();
 bool load_tracks();
@@ -64,7 +69,7 @@ WINDOW *win;
 pattern_state ps;
 track_state ts;
 
-void (*tracks_window())() {
+int mixer_view() {
     int c;
     while (1) {
 
@@ -210,9 +215,8 @@ void (*tracks_window())() {
                     save_and_quit();
                 }
                 break;
-            case 'p':
-            case 'P':
-                return patterns_window;
+            case '\t':
+                return SEQUENCER_VIEW;
         } 
 
         update();
@@ -222,8 +226,14 @@ void (*tracks_window())() {
 }
 
 
-void (*patterns_window(void))() {
-
+int sequencer_view(void) {
+    clear_screen();
+    
+    mvprintw(0, 0, "SEQUENCER%s %s",
+            ps.has_name ? ps.filename.c_str() : "[new file]",
+            ps.need_save ? "*" : " ");
+    
+    return MIXER_VIEW;
 }
 
 
@@ -461,9 +471,14 @@ int main(void) {
     getch();
     clear();
 
-    void (*view())() = tracks_window;
+    int (*view_func[])() = {
+        mixer_view,
+        sequencer_view
+    };
+
+    int view = MIXER_VIEW;
     while (view) {
-        view = view();
+        view = view_func[view-1]();
     }
 }
 
