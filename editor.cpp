@@ -2,6 +2,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <curses.h>
+#include <signal.h>
 
 using namespace std;
 #include "pattern.h"
