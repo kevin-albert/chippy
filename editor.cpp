@@ -11,6 +11,7 @@ using namespace std;
 
 #define MIXER_VIEW      1
 #define SEQUENCER_VIEW  2
+#define HELP_VIEW       3
 
 string logo[] = {
 "   _____ _    _ _____ _____  _______     __",
@@ -20,7 +21,9 @@ string logo[] = {
 " | |____| |  | |_| |_| |    | |      | |   ",
 "  \\_____|_|  |_|_____|_|    |_|      |_|   ",
 "",
-"         Press any key to continue"
+" [S] Sequencer",
+" [M] Mixer",
+" [H] Help"
 };
 
 void onsignal(int);
@@ -28,13 +31,14 @@ void cleanup(void);
 void save_and_quit(void);
 void update(void);
 
-int mixer_view(void);
-int sequencer_view(void);
+int mixer_view(int);
+int sequencer_view(int);
+int help_view(int);
 
 
-bool load_sequences();
+bool load_sequencer();
 bool load_instruments();
-bool save_sequences();
+bool save_sequencer();
 bool save_mixer();
 
 string read_prompt(const string &prompt);
@@ -51,6 +55,7 @@ struct sequencer_state {
     bool need_save {false};
     int offset {0};
     int idx {0};
+    int t_idx {0};
 };
 
 struct mixer_state {
@@ -66,16 +71,16 @@ int width;
 int height;
 WINDOW *win;
 
-sequencer_state ps;
+sequencer_state ss;
 mixer_state ms;
 
-int mixer_view() {
+int mixer_view(int previous_view) {
     int c;
     while (1) {
 
         clear_screen();
         
-        mvprintw(0, 0, "INSTRUMENTS%s %s",
+        mvprintw(0, 0, "INSTRUMENTS %s%s",
                 ms.has_name ? ms.filename.c_str() : "[new file]",
                 ms.need_save ? "*" : " ");
 
@@ -216,7 +221,10 @@ int mixer_view() {
                 }
                 break;
             case '\t':
-                return SEQUENCER_VIEW;
+                return previous_view;
+            case 'h':
+            case 'H':
+                return HELP_VIEW;
         } 
 
         update();
@@ -226,16 +234,93 @@ int mixer_view() {
 }
 
 
-int sequencer_view(void) {
+int sequencer_view(int previous_view) {
     
     while (1) {
         clear_screen();
-        mvprintw(0, 0, "SEQUENCER%s %s",
-                ps.has_name ? ps.filename.c_str() : "[new file]",
-                ps.need_save ? "*" : " ");
+        mvprintw(0, 0, "SEQUENCER %s%s",
+                ss.has_name ? ss.filename.c_str() : "[new file]",
+                ss.need_save ? "*" : " ");
+        mvprintw(0, 30, "PATTERN: [");
+        for (int i = 0; i < 4; ++i) {
+            if (i == ss.idx) {
+                attron(A_STANDOUT);
+            }
+            mvprintw(0, 41 + 3 * i, "%d", i + 1);
+            if (i == ss.idx) {
+                attroff(A_STANDOUT);
+            }
+        }
+        mvprintw(0, 51, " ]");
+
+        update();
+
+        char c = getch();
+        switch (c) {
+            case '1': ss.idx = 0; break;
+            case '2': ss.idx = 1; break;
+            case '3': ss.idx = 2; break;
+            case '4': ss.idx = 3; break;
+            case 's':
+            case 'S':
+                save_sequencer();
+                break;
+            case '\t':
+                return previous_view;
+            case 'q':
+            case 'Q':
+                if (read_yn("save and quit?")) {
+                    save_and_quit();
+                }
+                break;
+            case 'h':
+            case 'H':
+                return HELP_VIEW;
+
+        }
     }
     
-    return MIXER_VIEW;
+    return 0;
+}
+
+
+int help_view(int previous_view) {
+    
+    mvprintw(0,  0, "HELP (Press [H] at any time to see this message)");
+    mvprintw(2,  0, "[SPACE] Play / pause");
+    mvprintw(3,  0, "[TAB]   Switch view");
+    mvprintw(4,  0, "[Q]     Save and quit");
+
+    mvprintw(6,  4, "MIXER");
+    mvprintw(8,  4, "[S]   Save");
+    mvprintw(9,  4, "[L]   Load");
+    mvprintw(10, 4, "[E]   Edit instrument");
+    mvprintw(11, 4, "[V]   Change volume");
+    mvprintw(12, 4, "[J]   Next instrument");
+    mvprintw(13, 4, "[K]   Last instrument");
+    mvprintw(14, 4, "[1-4] Select instrument");
+    mvprintw(15, 4, "[P]   Play note");
+
+    mvprintw(6,  32, "SEQUENCER");
+    mvprintw(8,  32, "[S]   Save song");
+    mvprintw(9,  32, "[L]   Load song");
+    mvprintw(10, 32, "[E]   Edit sequence");
+    mvprintw(11, 32, "[1-4] Select sequence");
+    mvprintw(12, 32, "[I]   Select instrument");
+    mvprintw(13, 32, "[K]   In edit mode: Go up");
+    mvprintw(14, 32, "[J]   In edit mode: Go down");
+    mvprintw(15, 32, "[H]   In edit mode: Go left");
+    mvprintw(16, 32, "[L]   In edit mode: Go right");
+    mvprintw(17, 32, "[N]   In edit mode: Add note");
+    mvprintw(16, 32, "[X]   In edit mode: Delete note");
+    
+    update();
+    getch();
+    clear_screen();
+
+    if (previous_view == HELP_VIEW) 
+        previous_view = MIXER_VIEW;
+    return previous_view;
 }
 
 
@@ -397,13 +482,13 @@ load_instruments_begin:
 }
 
 
-bool save_sequences() {
+bool save_sequencer() {
 
     return false;
 }
 
 
-bool load_sequences() {
+bool load_sequencer() {
     
     return false;
 }
@@ -416,9 +501,9 @@ void save_and_quit() {
             save_mixer();
         }
     }
-    if (ps.need_save) {
+    if (ss.need_save) {
         if (read_yn("save sequences?")) {
-            save_sequences();
+            save_sequencer();
         }
     }
     cleanup();
@@ -466,21 +551,46 @@ int main(void) {
     signal(SIGHUP,  onsignal);
     signal(SIGTERM, onsignal);
 
-    for (int i = 0; i < 8; ++i) {
-        mvprintw(height / 2 - 4 + i, width / 2 - 22, logo[i].c_str());
+    for (int i = 0; i < 10; ++i) {
+        mvprintw(height / 2 - 5 + i, width / 2 - 22, logo[i].c_str());
     }
 
-    getch();
-    clear();
 
-    int (*view_func[])() = {
+    int (*view_func[])(int) = {
         mixer_view,
-        sequencer_view
+        sequencer_view,
+        help_view
     };
 
-    int view = MIXER_VIEW;
-    while (view) {
-        view = view_func[view-1]();
+    int view = 0;
+    while (!view) {
+        char c = getch();
+        switch (c) {
+            case 's':
+            case 'S':
+                view = SEQUENCER_VIEW;
+                break;
+            case 'm':
+            case 'M':
+                view = MIXER_VIEW;
+                break;
+            case 'h':
+            case 'H':
+                view = HELP_VIEW;
+                break;
+            case 'q':
+            case 'Q':
+                cleanup();
+                return 0;
+        }
     }
+
+    clear();
+
+    while (view) {
+        view = view_func[view-1](view);
+    }
+
+    cleanup();
 }
 
