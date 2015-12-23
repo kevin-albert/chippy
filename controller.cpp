@@ -5,11 +5,15 @@
 using namespace std;
 #include "controller.h"
 #include "expr.h"
+#include "track.h"
+#include "sequence.h"
 #include "pcm_wrapper.h"
 
 track tracks[4];
 expr<float> instruments[4];
 expr_context ctx;
+
+sequence sequences[4];
 
 static bool is_init {false};
 

@@ -1,11 +1,11 @@
-#ifndef pattern_h
-#define pattern_h
+#ifndef sequence_h
+#define sequence_h
 
 #include <iostream>
 #include <vector>
 
 /**
- * data class for patterns
+ * data class for sequences
  * basic list of events
  */
 
@@ -14,7 +14,7 @@
 #define EVT_SLIDE   '~'
 
 /**
- * pattern format
+ * sequence format
  * i1 
  * event...
  * i2 
@@ -72,13 +72,13 @@ struct evt_slide {
 ostream &operator<<(ostream&, const evt_slide&);
 istream &operator>>(istream&, evt_slide&);
 
-struct pattern {
+struct sequence {
     vector<evt_note> notes;
     vector<evt_slide> slides;
     void sort();
 };
 
-ostream &operator<<(ostream&, const pattern&);
-istream &operator>>(istream&, pattern&);
+ostream &operator<<(ostream&, const sequence&);
+istream &operator>>(istream&, sequence&);
 
 #endif

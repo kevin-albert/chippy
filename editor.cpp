@@ -5,7 +5,7 @@
 #include <signal.h>
 
 using namespace std;
-#include "pattern.h"
+#include "sequence.h"
 #include "track.h"
 #include "controller.h"
 
@@ -32,10 +32,10 @@ int mixer_view(void);
 int sequencer_view(void);
 
 
-bool load_pattern();
-bool load_tracks();
-bool save_pattern();
-bool save_tracks();
+bool load_sequences();
+bool load_instruments();
+bool save_sequences();
+bool save_mixer();
 
 string read_prompt(const string &prompt);
 int read_int(const string &prompt);
@@ -45,15 +45,15 @@ void print_error(const string &error);
 void print_status(const string &status);
 void clear_screen();
 
-struct pattern_state {
-    pattern pt;
+struct sequencer_state {
     string filename;
     bool has_name {false};
     bool need_save {false};
+    int offset {0};
     int idx {0};
 };
 
-struct track_state {
+struct mixer_state {
     string filename;
     bool has_name {false};
     bool need_save {false};
@@ -66,8 +66,8 @@ int width;
 int height;
 WINDOW *win;
 
-pattern_state ps;
-track_state ts;
+sequencer_state ps;
+mixer_state ms;
 
 int mixer_view() {
     int c;
@@ -76,8 +76,8 @@ int mixer_view() {
         clear_screen();
         
         mvprintw(0, 0, "INSTRUMENTS%s %s",
-                ts.has_name ? ts.filename.c_str() : "[new file]",
-                ts.need_save ? "*" : " ");
+                ms.has_name ? ms.filename.c_str() : "[new file]",
+                ms.need_save ? "*" : " ");
 
         mvprintw(1, 0, "1-4: Navigate, S: save, L: load, E: edit track, D: delete track, V: volume");
 
@@ -97,7 +97,7 @@ int mixer_view() {
                 eval_with_params(i, 60, 1.0 / 220, width, buffer);
             }
 
-            if (i == ts.idx) {
+            if (i == ms.idx) {
                 for (int j = 0; j < slice_height; ++j) {
                     mvaddch(y + j, 0, ':');
                 }
@@ -137,13 +137,13 @@ int mixer_view() {
         update();
         c = getch();
         switch (c) {
-            case '1': ts.idx = 0; break;
-            case '2': ts.idx = 1; break;
-            case '3': ts.idx = 2; break;
-            case '4': ts.idx = 3; break;
+            case '1': ms.idx = 0; break;
+            case '2': ms.idx = 1; break;
+            case '3': ms.idx = 2; break;
+            case '4': ms.idx = 3; break;
             case 's':
             case 'S':
-                save_tracks();
+                save_mixer();
                 break;
             case 'e':
             case 'E':
@@ -152,17 +152,17 @@ int mixer_view() {
                 {
                     string ex = read_prompt("new value");
                     if (ex != "") {
-                        string prev = tracks[ts.idx].instrument;
+                        string prev = tracks[ms.idx].instrument;
                         try {
-                            tracks[ts.idx].instrument = ex;
-                            setup_instrument(ts.idx, tracks[ts.idx].instrument);
-                            ts.need_save = true;
-                            tracks[ts.idx].enabled = true;
+                            tracks[ms.idx].instrument = ex;
+                            setup_instrument(ms.idx, tracks[ms.idx].instrument);
+                            ms.need_save = true;
+                            tracks[ms.idx].enabled = true;
                             print_status("");
                         } catch (exception &e) {
                             // unable to compile
                             print_error(e.what());
-                            tracks[ts.idx].instrument = prev;
+                            tracks[ms.idx].instrument = prev;
                         }
                     } else {
                         print_status("aborted");
@@ -172,9 +172,9 @@ int mixer_view() {
             case 'd':
             case 'D':
                 if (read_yn("delete instrument?")) {
-                    if (tracks[ts.idx].enabled) {
-                        remove_instrument(ts.idx);
-                        ts.need_save = true;
+                    if (tracks[ms.idx].enabled) {
+                        remove_instrument(ms.idx);
+                        ms.need_save = true;
                     }
                 }
                 break;
@@ -185,29 +185,29 @@ int mixer_view() {
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
-                    tracks[ts.idx].volume = volume;
-                    ts.need_save = true;
+                    tracks[ms.idx].volume = volume;
+                    ms.need_save = true;
                 } 
                 break;
             case 'k':
             case 'K':
             case KEY_UP:
                 // up 
-                if (ts.idx > 0) --ts.idx;
+                if (ms.idx > 0) --ms.idx;
                 break;
             case 'j':
             case 'J':
             case KEY_DOWN:
                 // down
-                if (ts.idx < 3) ++ts.idx;
+                if (ms.idx < 3) ++ms.idx;
                 break;
             case 'l':
             case 'L':
-                if (ts.need_save && read_yn("save tracks?")) {
-                    if (!save_tracks())
+                if (ms.need_save && read_yn("save tracks?")) {
+                    if (!save_mixer())
                         break;
                 }
-                load_tracks();
+                load_instruments();
                 break;
             case 'q':
             case 'Q':
@@ -227,11 +227,13 @@ int mixer_view() {
 
 
 int sequencer_view(void) {
-    clear_screen();
     
-    mvprintw(0, 0, "SEQUENCER%s %s",
-            ps.has_name ? ps.filename.c_str() : "[new file]",
-            ps.need_save ? "*" : " ");
+    while (1) {
+        clear_screen();
+        mvprintw(0, 0, "SEQUENCER%s %s",
+                ps.has_name ? ps.filename.c_str() : "[new file]",
+                ps.need_save ? "*" : " ");
+    }
     
     return MIXER_VIEW;
 }
@@ -315,12 +317,12 @@ void clear_screen() {
 }
 
 
-bool save_tracks() {
+bool save_mixer() {
     // save
     while (1) {
-        string filename = ts.filename;
-        if (!ts.has_name) {
-            filename = read_prompt("rack name");
+        string filename = ms.filename;
+        if (!ms.has_name) {
+            filename = read_prompt("instruments file");
             if (filename == "")
                 return false;
         }
@@ -331,22 +333,22 @@ bool save_tracks() {
                 out << (i + 1) << " " << tracks[i] << endl;
             }
             out.close();
-            ts.has_name = true;
-            ts.need_save = false;
-            ts.filename = filename;
+            ms.has_name = true;
+            ms.need_save = false;
+            ms.filename = filename;
             print_status("saved to /opt/chippy_files/" + filename);
             return true;
         } else {
             print_error("unable to open '" + filename + "'");
-            ts.has_name = false;
+            ms.has_name = false;
         }
     }
 }
 
 
-bool load_tracks() {
+bool load_instruments() {
     while (1) {
-load_tracks_begin:
+load_instruments_begin:
         string filename = read_prompt("load tracks");
         if (filename == "") {
             print_status("aborted");
@@ -358,21 +360,21 @@ load_tracks_begin:
                 remove_instrument(i);
             }
 
-            ts.filename = "";
-            ts.need_save = false;
-            ts.has_name = false;
+            ms.filename = "";
+            ms.need_save = false;
+            ms.has_name = false;
 
-            track_state ts_new;
+            mixer_state ms_new;
             track t_new[4];
-            ts_new.filename = filename;
-            ts_new.need_save = false;
-            ts_new.has_name = true;
+            ms_new.filename = filename;
+            ms_new.need_save = false;
+            ms_new.has_name = true;
             int i;
             while (in >> i) {
                 if (i < 1 || i > 4) {
                     print_error("malformed input file");
                     in.close();
-                    goto load_tracks_begin;
+                    goto load_instruments_begin;
                 }
                 in >> t_new[i-1];
                 if (t_new[i-1].enabled) {
@@ -383,7 +385,7 @@ load_tracks_begin:
                     }
                 }
             }
-            ts = ts_new;
+            ms = ms_new;
             for (int i = 0; i < 4; ++i)
                 tracks[i] = t_new[i];
             print_status("loaded /opt/chippy_files/" + filename);
@@ -395,13 +397,13 @@ load_tracks_begin:
 }
 
 
-bool save_pattern() {
+bool save_sequences() {
 
     return false;
 }
 
 
-bool load_pattern() {
+bool load_sequences() {
     
     return false;
 }
@@ -409,14 +411,14 @@ bool load_pattern() {
 
 void save_and_quit() {
     quit_now = true;
-    if (ts.need_save) {
-        if (read_yn("save instruments?")) {
-            save_tracks();
+    if (ms.need_save) {
+        if (read_yn("save mixer?")) {
+            save_mixer();
         }
     }
     if (ps.need_save) {
-        if (read_yn("save patterns?")) {
-            save_pattern();
+        if (read_yn("save sequences?")) {
+            save_sequences();
         }
     }
     cleanup();

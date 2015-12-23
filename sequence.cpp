@@ -6,7 +6,7 @@
 #include <cstring>
 
 using namespace std;
-#include "pattern.h"
+#include "sequence.h"
 
 
 template <typename T>
@@ -67,7 +67,7 @@ ostream &operator<<(ostream &output, const evt_slide &slide) {
     return output;
 }
 
-istream &operator>>(istream &input, pattern &p) {
+istream &operator>>(istream &input, sequence &p) {
     p.notes.clear();
     p.slides.clear();
 
@@ -102,7 +102,7 @@ istream &operator>>(istream &input, pattern &p) {
     return input;
 }
 
-ostream &operator<<(ostream &output, const pattern &p) {
+ostream &operator<<(ostream &output, const sequence &p) {
     output << "chippy";
     for (const evt_note &note: p.notes) {
         output << note;
@@ -113,7 +113,7 @@ ostream &operator<<(ostream &output, const pattern &p) {
     return output;
 }
 
-void pattern::sort() {
+void sequence::sort() {
     ::sort(notes.begin(),  notes.end(),  [](evt_note &e1,  evt_note &e2)  { return e1.start < e2.start; });
     ::sort(slides.begin(), slides.end(), [](evt_slide &e1, evt_slide &e2) { return e1.start < e2.start; });
 }

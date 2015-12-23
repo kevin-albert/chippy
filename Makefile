@@ -1,7 +1,7 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
 LDFLAGS	= -ldl -lcurses
-SRC		= editor.cpp controller.cpp pcm_wrapper.cpp track.cpp pattern.cpp expr.cpp
+SRC		= editor.cpp controller.cpp pcm_wrapper.cpp track.cpp sequence.cpp expr.cpp
 OBJ		= $(SRC:.cpp=.o)
 UNAME	= $(shell uname -s)
 
