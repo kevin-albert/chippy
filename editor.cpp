@@ -35,6 +35,13 @@ int mixer_view(int);
 int sequencer_view(int);
 int help_view(int);
 
+inline int max(int a, int b) {
+    return a > b ? a : b;
+}
+
+inline int min(int a, int b) {
+    return a < b ? a : b; 
+}
 
 bool load_sequencer();
 bool load_instruments();
@@ -47,15 +54,20 @@ bool read_yn(const string &prompt);
 
 void print_error(const string &error);
 void print_status(const string &status);
+void clear_status();
 void clear_screen();
 
 struct sequencer_state {
     string filename;
     bool has_name {false};
     bool need_save {false};
-    int offset {0};
+    bool edit_mode {false};
+    int offset_time {0};
+    int offset_note {60};
     int idx {0};
-    int t_idx {0};
+    int i_idx {0};
+    int cursor_x {0};
+    int cursor_y {0};
 };
 
 struct mixer_state {
@@ -63,6 +75,35 @@ struct mixer_state {
     bool has_name {false};
     bool need_save {false};
     int idx {0};
+};
+
+const char note_chars[] = {
+    '=',
+    '+',
+    '*',
+    '~'
+};
+
+const char note_start_chars[] = {
+    '#',
+    '[',
+    '0',
+    '%'
+};
+
+const char note_names[] = {
+    'A',
+    ' ',
+    'B',
+    'C',
+    ' ',
+    'D',
+    ' ',
+    'E',
+    'F',
+    ' ',
+    'G',
+    ' '
 };
 
 bool quit_now = false;
@@ -141,6 +182,7 @@ int mixer_view(int previous_view) {
 
         update();
         c = getch();
+        clear_status();
         switch (c) {
             case '1': ms.idx = 0; break;
             case '2': ms.idx = 1; break;
@@ -163,14 +205,14 @@ int mixer_view(int previous_view) {
                             setup_instrument(ms.idx, tracks[ms.idx].instrument);
                             ms.need_save = true;
                             tracks[ms.idx].enabled = true;
-                            print_status("");
+                            clear_status();
                         } catch (exception &e) {
                             // unable to compile
                             print_error(e.what());
                             tracks[ms.idx].instrument = prev;
                         }
                     } else {
-                        print_status("aborted");
+                        print_status("cancelled");
                     }
                 }
                 break;
@@ -221,10 +263,11 @@ int mixer_view(int previous_view) {
                 }
                 break;
             case '\t':
-                return previous_view;
+                return SEQUENCER_VIEW;
             case 'h':
             case 'H':
                 return HELP_VIEW;
+
         } 
 
         update();
@@ -236,6 +279,12 @@ int mixer_view(int previous_view) {
 
 int sequencer_view(int previous_view) {
     
+    if (ss.edit_mode) {
+        curs_set(1);
+    }
+
+    int nl = 8;
+
     while (1) {
         clear_screen();
         mvprintw(0, 0, "SEQUENCER %s%s",
@@ -251,11 +300,118 @@ int sequencer_view(int previous_view) {
                 attroff(A_STANDOUT);
             }
         }
-        mvprintw(0, 51, " ]");
+        mvaddch(0, 52, ']');
+        mvprintw(1, 27, "INSTRUMENT: [");
+        for (int i = 0; i < 4; ++i) {
+            if (i == ss.i_idx) {
+                attron(A_STANDOUT);
+            }
+            mvprintw(1, 41 + 3 * i, "%d", i + 1);
+            if (i == ss.i_idx) {
+                attroff(A_STANDOUT);
+            }
+        }
+
+        mvaddch(1, 52, ']');
+        // top bar
+        for (int i = ss.offset_time ? 0 : 3; i < width; ++i) {
+            mvaddch(2, i, '-');
+        }
+
+
+        // render the current sequence
+        int top = 2;
+        int bottom = height - 2;
+        int left = 3;
+        int right = width;
+        int screen_height = bottom - top;
+        int screen_width = right - left;
+
+        for (int i = left - ss.offset_time % 64; i < width; i += 64) {
+            if (i >= left) {
+                mvprintw(2, i, "%d", (i + ss.offset_time) / 64 + 1);
+            }
+        }
+        
+        // render bar / note lines
+        for (int i = screen_height - 1; i >= 0; --i) {
+            int note = ss.offset_note + i;
+            char name = note_names[note % 12];
+            if (name != ' ') {
+                int y = top + screen_height - i;
+                mvprintw(y, 0, "%c%d", name, note / 12);
+                if (name == 'A') {
+                    for (int j = left; j < right; ++j) {
+                        mvaddch(y, j, '.');
+                    }
+                }
+            }
+        }
+
+        // bar lines
+        int k = 0;
+        for (int i = left - ss.offset_time % 64; i < right; i += 16) {
+            if (i >= left) {
+                if (k % 4) {
+                    for (int j = top + 1; j <= bottom; ++j) {
+                        mvaddch(j, i, '.');
+                    }
+                } else {
+                    for (int j = top + 1; j <= bottom; ++j) {
+                        mvaddch(j, i, '|');
+                    }
+                }
+            }
+            ++k;
+        }
+
+        for (evt_note &n: sequences[ss.idx].notes) {
+            if (n.note > ss.offset_note && n.note < ss.offset_note + screen_height &&
+                    (n.start + n.length > ss.offset_time || n.start < ss.offset_time + width)) {
+                // draw this note
+                if (n.instrument == ss.i_idx) {
+                    // this note is for the currently selected instrument
+                    attron(A_STANDOUT);
+                }
+
+                char disp = note_chars[n.instrument];
+                int start = max(n.start - ss.offset_time, 0);
+                int end = min(n.start - ss.offset_time + n.length, screen_width);
+                int y = top + screen_height - n.note + ss.offset_note;
+
+                // display the beginning of the note as bold
+                if (end - start == n.length) {
+                    attron(A_BOLD);
+                    mvaddch(y, left + start++, note_start_chars[n.instrument]);
+                    attroff(A_BOLD);
+                }
+
+                while (start < end) {
+                    mvaddch(y, left + start++, disp);
+                }
+
+                if (n.instrument == ss.i_idx) {
+                    // this note is for the currently selected instrument
+                    attroff(A_STANDOUT);
+                }
+
+            }
+        }
+
+        // draw slide events
+        for (evt_slide &s: sequences[ss.idx].slides) {
+
+        }
+
+        if (ss.edit_mode) {
+            move(bottom - ss.cursor_y, ss.cursor_x + left);
+        }
 
         update();
 
         char c = getch();
+        clear_status();
+        mvprintw(height-1, 0, "offset: %d", ss.offset_time);
         switch (c) {
             case '1': ss.idx = 0; break;
             case '2': ss.idx = 1; break;
@@ -266,7 +422,8 @@ int sequencer_view(int previous_view) {
                 save_sequencer();
                 break;
             case '\t':
-                return previous_view;
+                curs_set(0);
+                return MIXER_VIEW;
             case 'q':
             case 'Q':
                 if (read_yn("save and quit?")) {
@@ -274,17 +431,199 @@ int sequencer_view(int previous_view) {
                 }
                 break;
             case 'h':
+                if (ss.edit_mode) {
+                    // move left
+                    if (ss.cursor_x > 3) {
+                        ss.cursor_x -= 4;
+                    } else if (ss.offset_time > 0) {
+                        ss.offset_time -= 64;
+                        ss.cursor_x = 60;
+                    } else {
+                        ss.cursor_x = 0;
+                    }
+                } else {
+                    curs_set(0);
+                    return HELP_VIEW;
+                }
+                break;
             case 'H':
-                return HELP_VIEW;
+                if (ss.edit_mode) {
+                    // move left
+                    if (ss.cursor_x > 63) {
+                        ss.cursor_x -= 64;
+                    } else if (ss.offset_time > 0) {
+                        ss.offset_time -= 64;
+                    } else {
+                        ss.cursor_x = 0;
+                    }
+                } else {
+                    curs_set(0);
+                    return HELP_VIEW;
+                }
+                break;
+            case '[':
+                if (ss.edit_mode) {
+                    if (ss.cursor_x == 0) {
+                        if (ss.offset_time >= 64) {
+                            ss.offset_time -= 64;
+                            ss.cursor_x += 63;
+                        }
+                    } else {
+                        --ss.cursor_x;
+                    }
+                }
+                break;
+            case 'l':
+                if (ss.edit_mode) {
+                    // move right
+                    if (ss.cursor_x < width - 4) {
+                        ss.cursor_x += 4;
+                    } else {
+                        ss.offset_time += 4;
+                    }
+                } else {
+                    load_sequencer();
+                }
+                break;
+            case 'L':
+                if (ss.edit_mode) {
+                    // move right
+                    if (ss.cursor_x < width - 64) {
+                        ss.cursor_x += 64;
+                    } else {
+                        ss.offset_time += 64;
+                    }
+                } else {
+                    load_sequencer();
+                }
+                break;
+            case ']':
+                if (ss.edit_mode) {
+                    if (ss.cursor_x == right - 1) {
+                        ss.offset_time += 64;
+                        ss.cursor_x -= 63;
+                    } else {
+                        ++ss.cursor_x;
+                    }
+                }
+                break;
+            case 'j':
+                if (ss.edit_mode) {
+                    if (ss.cursor_y > 0) {
+                        --ss.cursor_y;
+                    } else if (ss.offset_note > 0) {
+                        ss.offset_note -= 6;
+                        ss.cursor_y += 5;
+                    }
+                }
+                break;
+            case 'J':
+                if (ss.edit_mode && ss.offset_note > 0) {
+                    ss.offset_note -= 6;
+                    ss.cursor_y += 6;
+                    if (ss.cursor_y >= screen_height) {
+                        ss.cursor_y = screen_height - 1;
+                    }
+                }
+                break;
+            case 'k':
+                if (ss.edit_mode) {
+                    if (ss.cursor_y < screen_height - 1) {
+                        ++ss.cursor_y;
+                    } else if (ss.offset_note + screen_height <= 246) {
+                        ss.offset_note += 6;
+                        ss.cursor_y -= 5;
+                    }
+                }
+                break;
+            case 'K':
+                if (ss.edit_mode && ss.offset_note + screen_height <= 246) {
+                    ss.offset_note += 6;
+                    ss.cursor_y -= 6;
+                    if (ss.cursor_y >= screen_height) {
+                        ss.cursor_y = screen_height - 1;
+                    }
+                }
+                break;
+            case 'i':
+            case 'I':
+                print_status("change instrument [1-4]");
+                c = getch();
+                switch (c) {
+                    case '1': ss.i_idx = 0; clear_status(); break;
+                    case '2': ss.i_idx = 1; clear_status(); break;
+                    case '3': ss.i_idx = 2; clear_status(); break;
+                    case '4': ss.i_idx = 3; clear_status(); break;
+                    default: 
+                        print_status("cancelled");
+                        break;
+                }
 
+            case 'e': 
+            case 'E': 
+                ss.edit_mode = !ss.edit_mode;
+                curs_set(ss.edit_mode);
+                break;
+            case 'n':
+            case 'N':
+                if (ss.edit_mode) {
+                    evt_note note;
+                    note.instrument = ss.i_idx;
+                    note.note = ss.offset_note + ss.cursor_y;
+                    note.start = ss.offset_time + ss.cursor_x;
+                    do {
+                        int y = top + screen_height - ss.cursor_y;
+                        attron(A_STANDOUT);
+                        mvaddch(y, left + ss.cursor_x, note_start_chars[ss.i_idx]);
+                        attroff(A_STANDOUT);
+                        move(y, left + ss.cursor_x + nl);
+                        c = getch();
+                        switch (c) {
+                            case '[':
+                                nl -= 1;
+                                break;
+                            case 'h':
+                                nl -= 4;
+                                break;
+                            case 'H':
+                                nl -= 16;
+                                break;
+                            case ']':
+                                nl += 1;
+                                break;
+                            case 'l':
+                                nl += 4;
+                                break;
+                            case 'L':
+                                nl += 16;
+                                break;
+                            case 'n':
+                                ss.cursor_x += nl;
+                        }
+                        if (nl < 1) nl = 1;
+                        else if (nl + ss.cursor_x >= screen_width) {
+                            nl = screen_width - ss.cursor_x;
+                            mvprintw(height-1, 0, "overflow - sw: %d, cursor: %d, nl: %d", 
+                                    screen_width, ss.cursor_x, nl);
+                        }
+                    } while (c != 'n' && c != 'N');
+                    note.length = nl;
+                    note.vel = 100;
+                    mvprintw(height-1, 0, "note: %d [%c], start: %d, length: %d", note.note, note_names[note.note % 12], note.start, note.length);
+                    sequences[ss.idx].notes.push_back(note);
+                }
+                break;
         }
     }
     
+    curs_set(0);
     return 0;
 }
 
 
 int help_view(int previous_view) {
+
+    clear_screen();
     
     mvprintw(0,  0, "HELP (Press [H] at any time to see this message)");
     mvprintw(2,  0, "[SPACE] Play / pause");
@@ -315,8 +654,12 @@ int help_view(int previous_view) {
     mvprintw(16, 32, "[X]   In edit mode: Delete note");
     
     update();
-    getch();
+    char c = getch();
     clear_screen();
+    
+    if (c == 'q' || c == 'Q') {
+        save_and_quit();
+    }
 
     if (previous_view == HELP_VIEW) 
         previous_view = MIXER_VIEW;
@@ -337,6 +680,13 @@ void print_status(const string &status) {
     move(height - 1, 0);
     clrtoeol();
     mvprintw(height - 1, 0, "%s", status.c_str());
+    update();
+}
+
+
+void clear_status() {
+    move(height - 1, 0);
+    clrtoeol();
     update();
 }
 
@@ -436,7 +786,7 @@ bool load_instruments() {
 load_instruments_begin:
         string filename = read_prompt("load tracks");
         if (filename == "") {
-            print_status("aborted");
+            print_status("cancelled");
             return false;
         }
         ifstream in("/opt/chippy_files/" + filename);

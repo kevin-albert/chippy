@@ -29,6 +29,10 @@
  * end slide:   EVT_SLIDE   start length start_note start_vel end_note end_vel 10 bytes
  */
 
+/*
+ * all time units 1/16th note
+ */
+
 struct evt_note {
     evt_note() {}
     evt_note(uint8_t instrument, uint32_t start, uint16_t length, uint8_t note, uint8_t vel):
