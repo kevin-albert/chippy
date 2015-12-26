@@ -130,11 +130,11 @@ int mixer_view(int previous_view) {
         float buffer[width];
         for (int i = 0; i < 4; ++i) {
             int y = 2 + ((height - 3) * i) / 4;
-            mvprintw(y, 2, "TRACK %d:", i + 1);
+            mvprintw(y, 2, "INSTRUMENT %d:", i + 1);
             if (tracks[i].enabled) {
-                mvprintw(y++, 10, "| volume=[%3d] | value=[%s]", tracks[i].volume, tracks[i].instrument.c_str());
+                mvprintw(y++, 15, " volume=[%3d] | value={ %s }", tracks[i].volume, tracks[i].instrument.c_str());
             } else {
-                mvprintw(y++, 10, "| volume=[N/A]  | value={ø}");
+                mvprintw(y++, 15, " volume=[N/A]  | value={ ø }");
             }
 
             ++y;
@@ -369,17 +369,13 @@ int sequencer_view(int previous_view) {
             ++k;
         }
 
+        int selected_idx = -1;
+        int note_idx = 0;
         for (evt_note &n: sequences[ss.idx].notes) {
             if ((   (n.start_note >= ss.offset_note && n.end_note < ss.offset_note + screen_height) ||
                     (n.start_note >= ss.offset_note && n.end_note < ss.offset_note + screen_height)
                 ) &&
                 (n.start + n.length > ss.offset_time || n.start < ss.offset_time + width)) {
-
-                // draw this note
-                if (n.instrument == ss.i_idx) {
-                    // this note is for the currently selected instrument
-                    attron(A_STANDOUT);
-                }
 
                 char disp = note_chars[n.instrument];
                 int start = n.start - ss.offset_time;
@@ -388,6 +384,24 @@ int sequencer_view(int previous_view) {
                 int ydiff = top + screen_height - n.end_note + ss.offset_note - ystart;
                 int xdiff = end - start;
                 int xval = 1;
+
+                // draw this note
+                if (n.instrument == ss.i_idx) {
+                    // see if we've highlighted a note
+                    if (    selected_idx    == -1 && 
+                            ss.i_idx        == n.instrument && 
+                            start           == ss.cursor_x && 
+                            ystart          == bottom - ss.cursor_y) {
+
+                        mvprintw(height - 1, 0, "[%d] note %d -> %d, vel: %d -> %d", 
+                                 n.start, n.start_note, n.end_note, n.start_vel, n.end_vel);
+
+                        selected_idx = note_idx;
+                    }
+
+                    // this note is for the currently selected instrument
+                    attron(A_STANDOUT);
+                }
 
                 // display the beginning of the note as bold
                 if (start >= 0 && end - start == n.length) {
@@ -412,6 +426,8 @@ int sequencer_view(int previous_view) {
                 }
 
             }
+            
+            ++note_idx;
         }
 
         if (ss.edit_mode) {
@@ -428,8 +444,6 @@ int sequencer_view(int previous_view) {
         update();
 
         char c = getch();
-        clear_status();
-        mvprintw(height-1, 0, "offset: %d", ss.offset_time);
         switch (c) {
             case '1': ss.idx = 0; break;
             case '2': ss.idx = 1; break;
@@ -537,10 +551,10 @@ int sequencer_view(int previous_view) {
                 break;
             case 'J':
                 if (ss.edit_mode && ss.offset_note > 0) {
-                    ss.offset_note -= 6;
-                    ss.cursor_y += 6;
-                    if (ss.cursor_y >= screen_height) {
-                        ss.cursor_y = screen_height - 1;
+                    if (ss.cursor_y > 5) {
+                        ss.cursor_y -= 6;
+                    } else if (ss.offset_note > 0) {
+                        ss.offset_note -= 6;
                     }
                 }
                 break;
@@ -556,10 +570,10 @@ int sequencer_view(int previous_view) {
                 break;
             case 'K':
                 if (ss.edit_mode && ss.offset_note + screen_height <= 246) {
-                    ss.offset_note += 6;
-                    ss.cursor_y -= 6;
-                    if (ss.cursor_y >= screen_height) {
-                        ss.cursor_y = screen_height - 1;
+                    if (ss.cursor_y < screen_height - 6) {
+                        ss.cursor_y += 6;
+                    } else if (ss.offset_note + screen_height <= 246) {
+                        ss.offset_note += 6;
                     }
                 }
                 break;
@@ -581,6 +595,14 @@ int sequencer_view(int previous_view) {
             case 'E': 
                 ss.edit_mode = !ss.edit_mode;
                 curs_set(ss.edit_mode);
+                break;
+            case 'd':
+            case 'D':
+                if (ss.edit_mode && selected_idx != -1) {
+                    sequences[ss.i_idx].notes[selected_idx] = sequences[ss.i_idx].notes.back();
+                    sequences[ss.i_idx].notes.pop_back();
+                    clear_status();
+                }
                 break;
             case 'n':
             case 'N':

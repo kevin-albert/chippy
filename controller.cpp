@@ -36,7 +36,8 @@ float sin_w(const float m) {
 }
 
 float saw_w(const float m) {
-    return 2 * ((w * m) - (int) (w * m)) - 1;
+    float x = w * m / 2;
+    return 2 * (x - (int) x) - 1;
 }
 
 float sqr_w(const float m) {
@@ -52,7 +53,7 @@ float sqr_default() {
 }
 
 float saw_default() {
-    return 2 * (w - (int) w) - 1;
+    return 2 * (w / 2 - (int) (w / 2)) - 1;
 }
 
 float sin_t(const float m) {
@@ -64,11 +65,8 @@ float sqr_t(const float m) {
 }
 
 float saw_t(const float m) {
-    return 2 * ((t * m) - (int) (t * m)) - 1;
-}
-
-float dummy_root(const float v) {
-    return v;
+    float x = t * m / 2;
+    return 2 * (x - (int) x) - 1;
 }
 
 float fastroot(const float v) {
@@ -133,7 +131,6 @@ void remove_instrument(int id) {
 
 void go() {
     init();
-    cout << "go\n";
     
     f = 220;
     for (int n = 0; n < 10; ++n) {
