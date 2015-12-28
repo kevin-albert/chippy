@@ -8,15 +8,16 @@
 extern project current_project;
 extern instrument *instruments;
 extern sequence *sequences;
-extern expr<float> expressions[4];
-extern expr_context context;
+extern expr<float> expressions[8];
 
 void setup_instrument(int track, const string &ex);
 void remove_instrument(int track);
 void eval_with_params(int track, int note, double seconds, int length, float *buffer);
 void enable_sequence(bool);
+void controller_stop();
 
-void play_single(int track, int note, double seconds);
+void play_note(int instrument, int note);
+void play_sequence(int sequence);
 void play();
 void stop();
 

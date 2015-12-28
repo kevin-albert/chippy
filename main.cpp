@@ -900,6 +900,7 @@ void update() {
 void cleanup() {
     delwin(win);
     endwin();
+    controller_stop();
     refresh();
 }
 

@@ -9,8 +9,8 @@ int expr_id() {
     return _id++;
 }
 
-void expr_context::write(FILE *out) {
-    for (string &line : lines) {
+void expr_context::write(FILE *out) const {
+    for (const string &line : lines) {
         fprintf(out, "%s\n", line.c_str());
     }
 }

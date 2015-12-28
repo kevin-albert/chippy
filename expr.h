@@ -20,7 +20,7 @@ void print_types(ostream &out, initializer_list<type_index> types);
 class expr_context {
     public:
         expr_context() {}
-        void write(FILE *out);
+        void write(FILE *out) const;
 
         template <typename T, typename ... ARGS>
         void define(const string &name, T (*func)(ARGS...)) {
@@ -42,7 +42,7 @@ template<typename T>
 class expr {
     public:
         expr() { handle = 0; func = 0; }
-        expr(expr_context &ctx, const string&);
+        expr(const expr_context &ctx, const string&);
         ~expr();
         T eval() { 
             return func ? func() : 0;
@@ -62,7 +62,7 @@ class expr {
 };
 
 template<typename T>
-expr<T>::expr(expr_context &ctx, const string &expr) {
+expr<T>::expr(const expr_context &ctx, const string &expr) {
     stringstream func_name_str;
     func_name_str << "hack__" << hex << expr_id();
     string func_name(func_name_str.str());

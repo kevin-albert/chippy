@@ -8,6 +8,10 @@
   static snd_output_t *output = 0;
   static snd_pcm_t *handle;
   static int err;
+#else
+  #include <fstream>
+  using namespace std;
+  static ofstream pcm_out("/opt/chippy_files/pcm_out.txt");
 #endif
 
 using namespace std;
@@ -117,6 +121,15 @@ void pcm_write() {
         wait_for_poll(ufds, fdcount);
         need_poll = false;
     }
+#else
+
+    for (int i = 0; i < BUFFER_LEN; ++i) {
+        for (int j = 0; j < audio_buffer[i] / 2; ++j) {
+            pcm_out << ' ';
+        }
+        pcm_out << 'o' << endl;
+    }
+
 #endif
 }
 
