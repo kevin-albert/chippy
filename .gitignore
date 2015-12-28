@@ -3,3 +3,5 @@ a.out
 Makefile.deps
 *.so
 chippy
+project_debug
+

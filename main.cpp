@@ -5,8 +5,7 @@
 #include <signal.h>
 
 using namespace std;
-#include "sequence.h"
-#include "track.h"
+#include "project.h"
 #include "controller.h"
 
 #define MIXER_VIEW      1
@@ -34,6 +33,7 @@ void update(void);
 int mixer_view(int);
 int sequencer_view(int);
 int help_view(int);
+int dj_view(int);
 
 inline int max(int a, int b) {
     return a > b ? a : b;
@@ -43,10 +43,8 @@ inline int min(int a, int b) {
     return a < b ? a : b; 
 }
 
-bool load_sequencer();
-bool load_instruments();
-bool save_sequencer();
-bool save_mixer();
+bool load_project();
+bool save_project();
 
 string read_prompt(const string &prompt);
 int read_int(const string &prompt);
@@ -57,63 +55,34 @@ void print_status(const string &status);
 void clear_status();
 void clear_screen();
 
-struct sequencer_state {
-    string filename;
-    bool has_name   {false};
-    bool need_save  {false};
-    bool edit_mode  {false};
-    int offset_time {0};
-    int offset_note {60};
-    int idx         {0};
-    int i_idx       {0};
-    int cursor_x    {0};
-    int cursor_y    {0};
-};
-
-struct mixer_state {
-    string filename;
-    bool has_name   {false};
-    bool need_save  {false};
-    int idx         {0};
-};
-
-const char note_chars[] = {
-    '=',
-    '+',
-    '*',
-    '~'
-};
-
-const char note_start_chars[] = {
-    '#',
-    '[',
-    '0',
-    '%'
-};
-
-const char note_names[] = {
-    'A',
-    ' ',
-    'B',
-    'C',
-    ' ',
-    'D',
-    ' ',
-    'E',
-    'F',
-    ' ',
-    'G',
-    ' '
-};
-
+string filename;
+bool has_name   {false};
+bool need_save  {false};
+bool edit_mode  {false};
+int offset_time {0};
+int offset_note {60};
+int s_idx       {0};
+int i_idx       {0};
+int cursor_x    {0};
+int cursor_y    {12};
+uint16_t nl_last[] = {4, 4, 4, 4, 4, 4, 4, 4};
+const char note_names[13] = "A BC D EF G ";
 bool quit_now = false;
+
+const char note_chars[][4] = {
+    "[=]",
+    "{+}",
+    "(*)",
+    "<#>",
+    "\"'\"",
+    "|%|",
+    "/$/",
+    "\\@\\"
+};
 
 int width;
 int height;
 WINDOW *win;
-
-sequencer_state ss;
-mixer_state ms;
 
 int mixer_view(int previous_view) {
     int c;
@@ -122,40 +91,47 @@ int mixer_view(int previous_view) {
         clear_screen();
         
         mvprintw(0, 0, "INSTRUMENTS %s%s",
-                ms.has_name ? ms.filename.c_str() : "[new file]",
-                ms.need_save ? "*" : " ");
+                has_name ? filename.c_str() : "[new file]",
+                need_save ? "*" : " ");
 
-        mvprintw(1, 0, "1-4: Navigate, S: save, L: load, E: edit track, D: delete track, V: volume");
+        mvprintw(1, 0, "1-8: Navigate, S: save, L: load, E: edit track, D: delete track, V: volume");
 
         float buffer[width];
-        for (int i = 0; i < 4; ++i) {
-            int y = 2 + ((height - 3) * i) / 4;
+        int i_start = 0;
+        int i_end = 4;
+        int height_offset = 0;
+        if (i_idx > 3) {
+            i_start = 4;
+            i_end = 8;
+        }
+        for (int i = i_start; i < i_end; ++i) {
+            int y = 2 + ((height - 3) * (i - i_start)) / 4;
             mvprintw(y, 2, "INSTRUMENT %d:", i + 1);
-            if (tracks[i].enabled) {
-                mvprintw(y++, 15, " volume=[%3d] | value={ %s }", tracks[i].volume, tracks[i].instrument.c_str());
+            if (instruments[i].enabled) {
+                mvprintw(y++, 15, " volume=[%3d] | value=[ %s ]", instruments[i].volume, instruments[i].value.c_str());
             } else {
-                mvprintw(y++, 15, " volume=[N/A]  | value={ ø }");
+                mvprintw(y++, 15, " volume=[N/A]  | value=[ ø ]");
             }
 
             ++y;
             int slice_height = (height - 3) / 4 - 3;
-            if (tracks[i].enabled) {
+            if (instruments[i].enabled) {
                 eval_with_params(i, 60, 1.0 / 220, width, buffer);
             }
 
-            if (i == ms.idx) {
+            if (i == i_idx) {
                 for (int j = 0; j < slice_height; ++j) {
                     mvaddch(y + j, 0, ':');
                 }
             }
 
-            int last = y + slice_height * (1 + (double)tracks[i].volume / -100 * buffer[0]) / 2;
+            int last = y + slice_height * (1 + (double)instruments[i].volume / -100 * buffer[0]) / 2;
             if (last < y) last = y;
             if (last > y + slice_height) last = y + slice_height;
             for (int j = 1; j < width; ++j) {
                 mvaddch(y + slice_height / 2, j, '-');
-                if (tracks[i].enabled) {
-                    int grid_y = y + slice_height * (1 + (double)tracks[i].volume / -100 * buffer[j]) / 2;
+                if (instruments[i].enabled) {
+                    int grid_y = y + slice_height * (1 + (double)instruments[i].volume / -100 * buffer[j]) / 2;
                     if (grid_y < y) grid_y = y;
                     if (grid_y > y + slice_height) grid_y = y + slice_height;
 
@@ -184,13 +160,19 @@ int mixer_view(int previous_view) {
         c = getch();
         clear_status();
         switch (c) {
-            case '1': ms.idx = 0; break;
-            case '2': ms.idx = 1; break;
-            case '3': ms.idx = 2; break;
-            case '4': ms.idx = 3; break;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+                i_idx = c - 49;
+                break;
             case 's':
             case 'S':
-                save_mixer();
+                save_project();
                 break;
             case 'e':
             case 'E':
@@ -199,17 +181,17 @@ int mixer_view(int previous_view) {
                 {
                     string ex = read_prompt("new value");
                     if (ex != "") {
-                        string prev = tracks[ms.idx].instrument;
+                        string prev = instruments[i_idx].value;
                         try {
-                            tracks[ms.idx].instrument = ex;
-                            setup_instrument(ms.idx, tracks[ms.idx].instrument);
-                            ms.need_save = true;
-                            tracks[ms.idx].enabled = true;
+                            instruments[i_idx].value = ex;
+                            setup_instrument(i_idx, instruments[i_idx].value);
+                            need_save = true;
+                            instruments[i_idx].enabled = true;
                             clear_status();
                         } catch (exception &e) {
                             // unable to compile
                             print_error(e.what());
-                            tracks[ms.idx].instrument = prev;
+                            instruments[i_idx].value = prev;
                         }
                     } else {
                         print_status("cancelled");
@@ -219,9 +201,9 @@ int mixer_view(int previous_view) {
             case 'd':
             case 'D':
                 if (read_yn("delete instrument?")) {
-                    if (tracks[ms.idx].enabled) {
-                        remove_instrument(ms.idx);
-                        ms.need_save = true;
+                    if (instruments[i_idx].enabled) {
+                        remove_instrument(i_idx);
+                        need_save = true;
                     }
                 }
                 break;
@@ -232,29 +214,29 @@ int mixer_view(int previous_view) {
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
-                    tracks[ms.idx].volume = volume;
-                    ms.need_save = true;
+                    instruments[i_idx].volume = volume;
+                    need_save = true;
                 } 
                 break;
             case 'k':
             case 'K':
             case KEY_UP:
                 // up 
-                if (ms.idx > 0) --ms.idx;
+                if (i_idx > 0) --i_idx;
                 break;
             case 'j':
             case 'J':
             case KEY_DOWN:
                 // down
-                if (ms.idx < 3) ++ms.idx;
+                if (i_idx < 7) ++i_idx;
                 break;
             case 'l':
             case 'L':
-                if (ms.need_save && read_yn("save tracks?")) {
-                    if (!save_mixer())
+                if (need_save && read_yn("save project?")) {
+                    if (!save_project())
                         break;
                 }
-                load_instruments();
+                load_project();
                 break;
             case 'q':
             case 'Q':
@@ -279,7 +261,7 @@ int mixer_view(int previous_view) {
 
 int sequencer_view(int previous_view) {
     
-    if (ss.edit_mode) {
+    if (edit_mode) {
         curs_set(1);
     }
 
@@ -292,33 +274,34 @@ int sequencer_view(int previous_view) {
     while (1) {
         clear_screen();
         mvprintw(0, 0, "SEQUENCER %s%s",
-                ss.has_name ? ss.filename.c_str() : "[new file]",
-                ss.need_save ? "*" : " ");
+                has_name ? filename.c_str() : "[new file]",
+                need_save ? "*" : " ");
         mvprintw(0, 30, "PATTERN: [");
         for (int i = 0; i < 4; ++i) {
-            if (i == ss.idx) {
+            if (i == s_idx) {
                 attron(A_STANDOUT);
             }
             mvprintw(0, 41 + 3 * i, "%d", i + 1);
-            if (i == ss.idx) {
+            if (i == s_idx) {
                 attroff(A_STANDOUT);
             }
         }
         mvaddch(0, 52, ']');
+        mvprintw(0, 54, "bpm=[%d] | ts=[%d/4] | %d measures", current_project.bpm, sequences[s_idx].ts, sequences[s_idx].length);
         mvprintw(1, 27, "INSTRUMENT: [");
-        for (int i = 0; i < 4; ++i) {
-            if (i == ss.i_idx) {
+        for (int i = 0; i < 8; ++i) {
+            if (i == i_idx) {
                 attron(A_STANDOUT);
             }
             mvprintw(1, 41 + 3 * i, "%d", i + 1);
-            if (i == ss.i_idx) {
+            if (i == i_idx) {
                 attroff(A_STANDOUT);
             }
         }
 
-        mvaddch(1, 52, ']');
+        mvaddch(1, 64, ']');
         // top bar
-        for (int i = ss.offset_time ? 0 : 3; i < width; ++i) {
+        for (int i = offset_time ? 0 : 3; i < width; ++i) {
             mvaddch(2, i, '-');
         }
 
@@ -331,15 +314,17 @@ int sequencer_view(int previous_view) {
         int screen_height = bottom - top;
         int screen_width = right - left;
 
-        for (int i = left - ss.offset_time % 64; i < width; i += 64) {
+        int measure_length = 16 * sequences[s_idx].ts;
+
+        for (int i = left - offset_time % measure_length; i < width; i += measure_length) {
             if (i >= left) {
-                mvprintw(2, i, "%d", (i + ss.offset_time) / 64 + 1);
+                mvprintw(2, i, "%d", (i + offset_time) / measure_length + 1);
             }
         }
         
-        // render bar / note lines
+        // note lines
         for (int i = screen_height - 1; i >= 0; --i) {
-            int note = ss.offset_note + i;
+            int note = offset_note + i;
             char name = note_names[note % 12];
             if (name != ' ') {
                 int y = top + screen_height - i;
@@ -354,9 +339,9 @@ int sequencer_view(int previous_view) {
 
         // bar lines
         int k = 0;
-        for (int i = left - ss.offset_time % 64; i < right; i += 16) {
+        for (int i = left - offset_time % measure_length; i < right; i += 16) {
             if (i >= left) {
-                if (k % 4) {
+                if (k % sequences[s_idx].ts) {
                     for (int j = top + 1; j <= bottom; ++j) {
                         mvaddch(j, i, '.');
                     }
@@ -371,27 +356,26 @@ int sequencer_view(int previous_view) {
 
         int selected_idx = -1;
         int note_idx = 0;
-        for (evt_note &n: sequences[ss.idx].notes) {
-            if ((   (n.start_note >= ss.offset_note && n.end_note < ss.offset_note + screen_height) ||
-                    (n.start_note >= ss.offset_note && n.end_note < ss.offset_note + screen_height)
+        for (evt_note &n: sequences[s_idx].notes) {
+            if ((   (n.start_note >= offset_note && n.end_note < offset_note + screen_height) ||
+                    (n.start_note >= offset_note && n.end_note < offset_note + screen_height)
                 ) &&
-                (n.start + n.length > ss.offset_time || n.start < ss.offset_time + width)) {
+                (n.start + n.length > offset_time || n.start < offset_time + width)) {
 
-                char disp = note_chars[n.instrument];
-                int start = n.start - ss.offset_time;
-                int end = n.start - ss.offset_time + n.length;
-                int ystart = top + screen_height - n.start_note + ss.offset_note;
-                int ydiff = top + screen_height - n.end_note + ss.offset_note - ystart;
+                char disp = note_chars[n.instrument][1];
+                int start = n.start - offset_time;
+                int end = n.start - offset_time + n.length;
+                int ystart = top + screen_height - n.start_note + offset_note;
+                int ydiff = top + screen_height - n.end_note + offset_note - ystart;
                 int xdiff = end - start;
                 int xval = 1;
 
                 // draw this note
-                if (n.instrument == ss.i_idx) {
+                if (n.instrument == i_idx) {
                     // see if we've highlighted a note
                     if (    selected_idx    == -1 && 
-                            ss.i_idx        == n.instrument && 
-                            start           == ss.cursor_x && 
-                            ystart          == bottom - ss.cursor_y) {
+                            start           == cursor_x && 
+                            ystart          == bottom - cursor_y) {
 
                         mvprintw(height - 1, 0, "[%d] note %d -> %d, vel: %d -> %d", 
                                  n.start, n.start_note, n.end_note, n.start_vel, n.end_vel);
@@ -406,21 +390,26 @@ int sequencer_view(int previous_view) {
                 // display the beginning of the note as bold
                 if (start >= 0 && end - start == n.length) {
                     attron(A_BOLD);
-                    mvaddch(ystart, left + start++, note_start_chars[n.instrument]);
+                    mvaddch(ystart, left + start++, note_chars[n.instrument][0]);
                     attroff(A_BOLD);
                 }
 
                 while (start < end) {
                     ++xval;
                     if (start >= 0 && start < screen_width) {
+                        if (start == end - 1) {
+                            disp = note_chars[n.instrument][2];
+                            attron(A_BOLD);
+                        }
                         int y = ystart + ydiff * xval / xdiff;
-                        if (y > top && y < bottom) 
+                        if (y > top && y <= bottom) 
                             mvaddch(y, left + start, disp);
                     }
                     ++start;
                 }
 
-                if (n.instrument == ss.i_idx) {
+                attroff(A_BOLD);
+                if (n.instrument == i_idx) {
                     // this note is for the currently selected instrument
                     attroff(A_STANDOUT);
                 }
@@ -430,28 +419,33 @@ int sequencer_view(int previous_view) {
             ++note_idx;
         }
 
-        if (ss.edit_mode) {
+        if (edit_mode) {
             if (adding_note) {
-                int y = top + screen_height - new_note.start_note + ss.offset_note;
-                int x = max(new_note.start - ss.offset_time, 0);
+                int y = top + screen_height - new_note.start_note + offset_note;
+                int x = max(new_note.start - offset_time, 0);
                 attron(A_STANDOUT);
-                mvaddch(y, left + x, note_start_chars[ss.i_idx]);
+                mvaddch(y, left + x, note_chars[i_idx][0]);
                 attroff(A_STANDOUT);
             }
-            move(bottom - ss.cursor_y, ss.cursor_x + left);
+            move(bottom - cursor_y, cursor_x + left);
         }
 
         update();
 
         char c = getch();
+        while (measure_length >= max(screen_width, 2)) {
+            measure_length /= 2;
+        }
         switch (c) {
-            case '1': ss.idx = 0; break;
-            case '2': ss.idx = 1; break;
-            case '3': ss.idx = 2; break;
-            case '4': ss.idx = 3; break;
+            case '1':
+            case '2':
+            case '3':
+            case '4': 
+                s_idx = c - 49;
+                break;
             case 's':
             case 'S':
-                save_sequencer();
+                save_project();
                 break;
             case '\t':
                 curs_set(0);
@@ -462,16 +456,29 @@ int sequencer_view(int previous_view) {
                     save_and_quit();
                 }
                 break;
-            case 'h':
-                if (ss.edit_mode) {
-                    // move left
-                    if (ss.cursor_x > 3) {
-                        ss.cursor_x -= 4;
-                    } else if (ss.offset_time > 0) {
-                        ss.offset_time -= 64;
-                        ss.cursor_x = 60;
+            case '[':
+                if (edit_mode) {
+                    // left + 1/16
+                    if (cursor_x == 0) {
+                        if (offset_time >= measure_length) {
+                            offset_time -= measure_length;
+                            cursor_x += measure_length - 1;
+                        }
                     } else {
-                        ss.cursor_x = 0;
+                        --cursor_x;
+                    }
+                }
+                break;
+            case 'h':
+                if (edit_mode) {
+                    // left + 1/4
+                    if (cursor_x > 3) {
+                        cursor_x -= 4;
+                    } else if (offset_time > 0) {
+                        offset_time -= measure_length;
+                        cursor_x = measure_length - 4;
+                    } else {
+                        cursor_x = 0;
                     }
                 } else {
                     curs_set(0);
@@ -479,101 +486,96 @@ int sequencer_view(int previous_view) {
                 }
                 break;
             case 'H':
-                if (ss.edit_mode) {
-                    // move left
-                    if (ss.cursor_x > 63) {
-                        ss.cursor_x -= 64;
-                    } else if (ss.offset_time > 0) {
-                        ss.offset_time -= 64;
+                if (edit_mode) {
+                    // left + 1
+                    if (cursor_x > measure_length - 1) {
+                        cursor_x -= measure_length;
+                    } else if (offset_time > 0) {
+                        offset_time -= measure_length;
                     } else {
-                        ss.cursor_x = 0;
+                        cursor_x = 0;
                     }
                 } else {
                     curs_set(0);
                     return HELP_VIEW;
                 }
                 break;
-            case '[':
-                if (ss.edit_mode) {
-                    if (ss.cursor_x == 0) {
-                        if (ss.offset_time >= 64) {
-                            ss.offset_time -= 64;
-                            ss.cursor_x += 63;
-                        }
+            case ']':
+                if (edit_mode) {
+                    // right + 1/16
+                    if (cursor_x == right - 1) {
+                        offset_time += measure_length;
+                        cursor_x -= measure_length - 1;
                     } else {
-                        --ss.cursor_x;
+                        ++cursor_x;
                     }
                 }
                 break;
             case 'l':
-                if (ss.edit_mode) {
-                    // move right
-                    if (ss.cursor_x < width - 4) {
-                        ss.cursor_x += 4;
+                if (edit_mode) {
+                    // right + 1/14t
+                    if (cursor_x < width - 4) {
+                        cursor_x += 4;
                     } else {
-                        ss.offset_time += 4;
+                        offset_time += measure_length;
+                        cursor_x -= measure_length - 4;
                     }
                 } else {
-                    load_sequencer();
+                    load_project();
                 }
                 break;
             case 'L':
-                if (ss.edit_mode) {
+                if (edit_mode) {
                     // move right
-                    if (ss.cursor_x < width - 64) {
-                        ss.cursor_x += 64;
+                    if (cursor_x < width - measure_length) {
+                        cursor_x += measure_length;
                     } else {
-                        ss.offset_time += 64;
+                        offset_time += measure_length;
                     }
                 } else {
-                    load_sequencer();
-                }
-                break;
-            case ']':
-                if (ss.edit_mode) {
-                    if (ss.cursor_x == right - 1) {
-                        ss.offset_time += 64;
-                        ss.cursor_x -= 63;
-                    } else {
-                        ++ss.cursor_x;
+                    if (need_save) {
+                        if (!save_project()) {
+                            break;
+                        }
                     }
+                    load_project();
                 }
                 break;
             case 'j':
-                if (ss.edit_mode) {
-                    if (ss.cursor_y > 0) {
-                        --ss.cursor_y;
-                    } else if (ss.offset_note > 0) {
-                        ss.offset_note -= 6;
-                        ss.cursor_y += 5;
+                if (edit_mode) {
+                    if (cursor_y > 0) {
+                        --cursor_y;
+                    } else if (offset_note > 0) {
+                        offset_note -= 6;
+                        cursor_y += 5;
                     }
                 }
                 break;
             case 'J':
-                if (ss.edit_mode && ss.offset_note > 0) {
-                    if (ss.cursor_y > 5) {
-                        ss.cursor_y -= 6;
-                    } else if (ss.offset_note > 0) {
-                        ss.offset_note -= 6;
+                if (edit_mode && offset_note > 0) {
+                    if (cursor_y > 5) {
+                        cursor_y -= 6;
+                    } else if (offset_note > 0) {
+                        offset_note -= 6;
                     }
                 }
                 break;
             case 'k':
-                if (ss.edit_mode) {
-                    if (ss.cursor_y < screen_height - 1) {
-                        ++ss.cursor_y;
-                    } else if (ss.offset_note + screen_height <= 246) {
-                        ss.offset_note += 6;
-                        ss.cursor_y -= 5;
+                if (edit_mode) {
+                    if (cursor_y < screen_height - 1) {
+                        ++cursor_y;
+                    } else if (offset_note + screen_height <= 246) {
+                        offset_note += 6;
+                        cursor_y -= 5;
                     }
                 }
                 break;
             case 'K':
-                if (ss.edit_mode && ss.offset_note + screen_height <= 246) {
-                    if (ss.cursor_y < screen_height - 6) {
-                        ss.cursor_y += 6;
-                    } else if (ss.offset_note + screen_height <= 246) {
-                        ss.offset_note += 6;
+                if (edit_mode && offset_note + screen_height <= 246) {
+                    if (cursor_y < screen_height - 6) {
+                        cursor_y += 6;
+                    } else if (offset_note + screen_height <= 246) {
+                        offset_note += 6;
                     }
                 }
                 break;
@@ -582,41 +584,82 @@ int sequencer_view(int previous_view) {
                 print_status("change instrument [1-4]");
                 c = getch();
                 switch (c) {
-                    case '1': ss.i_idx = 0; clear_status(); break;
-                    case '2': ss.i_idx = 1; clear_status(); break;
-                    case '3': ss.i_idx = 2; clear_status(); break;
-                    case '4': ss.i_idx = 3; clear_status(); break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                        i_idx = c - 49;
+                        clear_status();
+                        break;
                     default: 
                         print_status("cancelled");
                         break;
                 }
-
+                break;
             case 'e': 
             case 'E': 
-                ss.edit_mode = !ss.edit_mode;
-                curs_set(ss.edit_mode);
+                edit_mode = !edit_mode;
+                curs_set(edit_mode);
                 break;
             case 'd':
             case 'D':
-                if (ss.edit_mode && selected_idx != -1) {
-                    sequences[ss.i_idx].notes[selected_idx] = sequences[ss.i_idx].notes.back();
-                    sequences[ss.i_idx].notes.pop_back();
+            case 'x':
+            case 'X':
+                if (edit_mode && selected_idx != -1) {
+                    sequences[i_idx].notes[selected_idx] = sequences[i_idx].notes.back();
+                    sequences[i_idx].notes.pop_back();
+                    sequences[i_idx].update_natural_length();
                     clear_status();
                 }
                 break;
             case 'n':
             case 'N':
-                if (ss.edit_mode) {
+                if (edit_mode) {
                     if (adding_note) {
-                        new_note.length = ss.cursor_x + ss.offset_time - new_note.start;
-                        new_note.end_note = ss.offset_note + ss.cursor_y;
-                        sequences[ss.i_idx].notes.push_back(new_note);
-                        adding_note = false;
+                        new_note.length = cursor_x + offset_time - new_note.start;
+                        new_note.end_note = offset_note + cursor_y;
+                        nl_last[i_idx] = new_note.length;
+                        sequences[s_idx].add_note(new_note);
                     } else {
-                        new_note.instrument = ss.i_idx;
-                        new_note.start_note = ss.offset_note + ss.cursor_y;
-                        new_note.start = ss.offset_time + ss.cursor_x;
-                        adding_note = true;
+                        new_note.instrument = i_idx;
+                        new_note.start_note = offset_note + cursor_y;
+                        new_note.start = offset_time + cursor_x;
+                        cursor_x += nl_last[i_idx];
+                        if (cursor_x >= width) {
+                            cursor_x = width-1;
+                        }
+                    }
+                    adding_note = !adding_note;
+                }
+                break;
+            case 't':
+                // change time signature
+                {
+                    int ts = read_int("quarter notes per measure");
+                    if (ts > 0) {
+                        sequences[s_idx].ts = ts;
+                    }
+                }
+                break;
+            case 'T':
+                // change sequence length
+                {
+                    int length = read_int("sequence length in (number of measures)");
+                    if (length > sequences[s_idx].natural_length) {
+                        sequences[s_idx].length = length;
+                    }
+                }
+                break;
+            case 'b':
+            case 'B':
+                {
+                    int bpm = read_int("bpm");
+                    if (bpm > 0) {
+                        current_project.bpm = bpm;
                     }
                 }
                 break;
@@ -633,32 +676,35 @@ int help_view(int previous_view) {
     clear_screen();
     
     mvprintw(0,  0, "HELP (Press [H] at any time to see this message)");
-    mvprintw(2,  0, "[SPACE] Play / pause");
-    mvprintw(3,  0, "[TAB]   Switch view");
-    mvprintw(4,  0, "[Q]     Save and quit");
+    mvprintw(2,  0, "[SPACE]    Play / pause");
+    mvprintw(3,  0, "[TAB]      Switch view");
+    mvprintw(4,  0, "[Q]        Save and quit");
 
     mvprintw(6,  4, "MIXER");
-    mvprintw(8,  4, "[S]   Save");
-    mvprintw(9,  4, "[L]   Load");
-    mvprintw(10, 4, "[E]   Edit instrument");
-    mvprintw(11, 4, "[V]   Change volume");
-    mvprintw(12, 4, "[J]   Next instrument");
-    mvprintw(13, 4, "[K]   Last instrument");
-    mvprintw(14, 4, "[1-4] Select instrument");
-    mvprintw(15, 4, "[P]   Play note");
+    mvprintw(8,  4, "[S]        Save");
+    mvprintw(9,  4, "[L]        Load");
+    mvprintw(10, 4, "[E]        Edit instrument");
+    mvprintw(11, 4, "[V]        Change volume");
+    mvprintw(12, 4, "[J]        Next instrument");
+    mvprintw(13, 4, "[K]        Last instrument");
+    mvprintw(14, 4, "[1-8]      Select instrument");
+    mvprintw(15, 4, "[SPACE]    Play note");
 
     mvprintw(6,  32, "SEQUENCER");
-    mvprintw(8,  32, "[S]   Save song");
-    mvprintw(9,  32, "[L]   Load song");
-    mvprintw(10, 32, "[E]   Edit sequence");
-    mvprintw(11, 32, "[1-4] Select sequence");
-    mvprintw(12, 32, "[I]   Select instrument");
-    mvprintw(13, 32, "[K]   In edit mode: Go up");
-    mvprintw(14, 32, "[J]   In edit mode: Go down");
-    mvprintw(15, 32, "[H]   In edit mode: Go left");
-    mvprintw(16, 32, "[L]   In edit mode: Go right");
-    mvprintw(17, 32, "[N]   In edit mode: Add note");
-    mvprintw(16, 32, "[X]   In edit mode: Delete note");
+    mvprintw(8,  32, "[S]       Save song");
+    mvprintw(9,  32, "[L]       Load song");
+    mvprintw(10, 32, "[B]       Change BPM");
+    mvprintw(11, 32, "[T]       Change sequence length");
+    mvprintw(12, 32, "[SHIFT+T] Change time signature");
+    mvprintw(13, 32, "[E]       Edit sequence");
+    mvprintw(14, 32, "[1-4]     Select sequence");
+    mvprintw(15, 32, "[I]       Select instrument");
+    mvprintw(16, 32, "[K]       In edit mode: Go up");
+    mvprintw(17, 32, "[J]       In edit mode: Go down");
+    mvprintw(18, 32, "[H]       In edit mode: Go left");
+    mvprintw(19, 32, "[L]       In edit mode: Go right");
+    mvprintw(20, 32, "[N]       In edit mode: Add note");
+    mvprintw(21, 32, "[X]       In edit mode: Delete note");
     
     update();
     char c = getch();
@@ -722,7 +768,10 @@ int read_int(const string &prompt) {
     mvprintw(height - 1, 0, "%s: ", prompt.c_str());
     update();
     int val;
-    scanw("%d", &val);
+    char fmt[3] = "%d";
+    if (scanw(fmt, &val) == ERR) {
+        val = 0;
+    }
     noecho();
     curs_set(0);
     update();
@@ -759,108 +808,71 @@ void clear_screen() {
 }
 
 
-bool save_mixer() {
-    // save
+bool save_project() {
     while (1) {
-        string filename = ms.filename;
-        if (!ms.has_name) {
-            filename = read_prompt("instruments file");
-            if (filename == "")
+        string s_filename = filename;
+        if (!has_name) {
+            s_filename = read_prompt("project name");
+            if (s_filename == "") {
+                print_status("cancelled");
                 return false;
+            }
         }
 
-        ofstream out("/opt/chippy_files/" + filename);
+        ofstream out("/opt/chippy_files/" + s_filename + ".chip");
         if (out.is_open()) {
-            for (int i = 0; i < 4; ++i) {
-                out << (i + 1) << " " << tracks[i] << endl;
-            }
+            out << current_project;
             out.close();
-            ms.has_name = true;
-            ms.need_save = false;
-            ms.filename = filename;
-            print_status("saved to /opt/chippy_files/" + filename);
+            has_name = true;
+            need_save = false;
+            filename = s_filename;
+            print_status("saved to /opt/chippy_files/" + filename + ".chip");
             return true;
         } else {
-            print_error("unable to open '" + filename + "'");
-            ms.has_name = false;
+            print_error("unable to open '" + s_filename + "'");
+            has_name = false;
         }
     }
 }
 
 
-bool load_instruments() {
+bool load_project() {
     while (1) {
-load_instruments_begin:
-        string filename = read_prompt("load tracks");
-        if (filename == "") {
+load_project_begin:
+        string l_filename = read_prompt("project name");
+        if (l_filename == "") {
             print_status("cancelled");
             return false;
         }
-        ifstream in("/opt/chippy_files/" + filename);
+        ifstream in("/opt/chippy_files/" + l_filename + ".chip");
         if (in.is_open()) {
+            in >> current_project;
+            need_save = false;
+            has_name = false;
+            print_status("loaded /opt/chippy_files/" + l_filename + ".chip");
+            filename = l_filename;
+            need_save = false;
+            has_name = true;
             for (int i = 0; i < 4; ++i) {
                 remove_instrument(i);
-            }
-
-            ms.filename = "";
-            ms.need_save = false;
-            ms.has_name = false;
-
-            mixer_state ms_new;
-            track t_new[4];
-            ms_new.filename = filename;
-            ms_new.need_save = false;
-            ms_new.has_name = true;
-            int i;
-            while (in >> i) {
-                if (i < 1 || i > 4) {
-                    print_error("malformed input file");
-                    in.close();
-                    goto load_instruments_begin;
-                }
-                in >> t_new[i-1];
-                if (t_new[i-1].enabled) {
-                    try {
-                        setup_instrument(i - 1, t_new[i - 1].instrument);
-                    } catch (exception &e) {
-                        print_error("cannot compile instruments");
-                    }
+                if (instruments[i].enabled) {
+                    setup_instrument(i, instruments[i].value);
                 }
             }
-            ms = ms_new;
-            for (int i = 0; i < 4; ++i)
-                tracks[i] = t_new[i];
-            print_status("loaded /opt/chippy_files/" + filename);
+            mvprintw(height-1, 0, "loaded %d notes", sequences[0].notes.size());
             return true;
         } else {
-            print_error("unable to open " + filename);
+            print_error("unable to open " + l_filename);
         }
     }
-}
-
-
-bool save_sequencer() {
-
-    return false;
-}
-
-
-bool load_sequencer() {
-    
-    return false;
 }
 
 
 void save_and_quit() {
     quit_now = true;
-    if (ms.need_save) {
-        if (read_yn("save mixer?")) {
-            save_mixer();
-        }
-    }
-    if (ss.need_save) {
-        if (read_yn("save sequences?")) {
-            save_sequencer();
+    if (need_save) {
+        if (read_yn("save project?")) {
+            save_project();
         }
     }
     cleanup();
@@ -944,8 +956,12 @@ int main(void) {
 
     clear();
 
+    int previous_view = HELP_VIEW;
+    int next_view;
     while (view) {
-        view = view_func[view-1](view);
+        next_view = view_func[view-1](previous_view);
+        previous_view = view;
+        view = next_view;
     }
 
     cleanup();

@@ -3,17 +3,15 @@
 #include <bitset>
 
 using namespace std;
-#include "controller.h"
+#include "project.h"
 #include "expr.h"
-#include "track.h"
-#include "sequence.h"
 #include "pcm_wrapper.h"
 
-track tracks[4];
-expr<float> instruments[4];
+project current_project;
+instrument *instruments = current_project.instruments;
+sequence *sequences = current_project.sequences;
+expr<float> expressions[4];
 expr_context ctx;
-
-sequence sequences[4];
 
 static bool is_init {false};
 
@@ -118,14 +116,14 @@ void setup_instrument(int id, const string &ex) {
     if (id < 0 || id >= 4) {
         throw invalid_argument("invalid track index");
     }
-    instruments[id] = expr<float>(ctx, ex);
-    tracks[id].enabled = true;
+    expressions[id] = expr<float>(ctx, ex);
+    instruments[id].enabled = true;
 }
 
 
 void remove_instrument(int id) {
-    tracks[id] = track();
-    instruments[id] = expr<float>();
+    instruments[id] = instrument();
+    expressions[id] = expr<float>();
 }
 
 
@@ -140,9 +138,9 @@ void go() {
             w = t * f * M_PI * 2;
             float val = 0;
             for (int j = 0; j < 4; ++j) {
-                if (tracks[j].enabled) {
-                    float volume = tracks[j].volume;
-                    val += volume * instruments[i].eval();
+                if (instruments[j].enabled) {
+                    float volume = instruments[j].volume;
+                    val += volume * expressions[i].eval();
                 }
             }
             audio_buffer[i] = val > 1 ? 0x80 : val < -1 ? 0x0 : (uint8_t) (0x40 + (val+1)*64);
@@ -159,12 +157,12 @@ void eval_with_params(int id, int note, double seconds, int length, float *buffe
     if (id < 0 || id >= 4) {
         throw invalid_argument("invalid track index");
     }
-    if (!tracks[id].enabled) return;
+    if (!instruments[id].enabled) return;
     set_frequency(note);
     for (int i = 0; i < length; ++i) {
         t = i * seconds / length;
         w = t * f * M_PI * 2;
-        buffer[i] = instruments[id].eval();
+        buffer[i] = expressions[id].eval();
     }
 }
 

@@ -1,7 +1,7 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
 LDFLAGS	= -ldl -lcurses
-SRC		= main.cpp controller.cpp pcm_wrapper.cpp track.cpp sequence.cpp expr.cpp
+SRC		= main.cpp controller.cpp project.cpp pcm_wrapper.cpp expr.cpp
 OBJ		= $(SRC:.cpp=.o)
 UNAME	= $(shell uname -s)
 
@@ -11,6 +11,9 @@ endif
 
 chippy: $(OBJ)
 	$(CC) $(LDFLAGS) $^ -o $@
+
+project_debug: project_debug.cpp project.o
+	$(CC) -std=c++11 $^ -o $@
 
 deploy:
 	git push device master

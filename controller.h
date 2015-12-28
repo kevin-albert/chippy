@@ -3,12 +3,12 @@
 
 #include <string>
 #include "expr.h"
-#include "track.h"
-#include "sequence.h"
+#include "project.h"
 
-extern track tracks[4];
-extern sequence sequences[4];
-extern expr<float> instruments[4];
+extern project current_project;
+extern instrument *instruments;
+extern sequence *sequences;
+extern expr<float> expressions[4];
 extern expr_context context;
 
 void setup_instrument(int track, const string &ex);
