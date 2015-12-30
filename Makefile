@@ -1,7 +1,7 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
 LDFLAGS	= -ldl -lcurses
-SRC		= main.cpp controller.cpp project.cpp pcm_wrapper.cpp expr.cpp
+SRC		= main.cpp controller.cpp project.cpp synth_api.cpp pcm_wrapper.cpp expr.cpp
 OBJ		= $(SRC:.cpp=.o)
 UNAME	= $(shell uname -s)
 

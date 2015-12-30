@@ -10,6 +10,8 @@
   static int err;
 #else
   #include <fstream>
+  #include <thread>
+  #include <chrono>
   using namespace std;
   static ofstream pcm_out("/opt/chippy_files/pcm_out.txt");
 #endif
@@ -130,12 +132,16 @@ void pcm_write() {
         pcm_out << 'o' << endl;
     }
 
+    this_thread::sleep_for(chrono::milliseconds(100));
+
 #endif
 }
 
 void pcm_close() {
 #ifdef __linux__
     snd_pcm_close(handle);
+#else
+    pcm_out.close();
 #endif
 }
 

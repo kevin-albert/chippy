@@ -86,11 +86,12 @@ WINDOW *win;
 
 int mixer_view(int previous_view) {
     int c;
+    bool playing = false;
     while (1) {
 
         clear_screen();
         
-        mvprintw(0, 0, "INSTRUMENTS %s%s",
+        mvprintw(0, 0, "%s%s MIXER",
                 has_name ? filename.c_str() : "[new file]",
                 need_save ? "*" : " ");
 
@@ -107,31 +108,33 @@ int mixer_view(int previous_view) {
         for (int i = i_start; i < i_end; ++i) {
             int y = 2 + ((height - 3) * (i - i_start)) / 4;
             mvprintw(y, 2, "INSTRUMENT %d:", i + 1);
-            if (instruments[i].enabled) {
-                mvprintw(y++, 15, " volume=[%3d] | value=[ %s ]", instruments[i].volume, instruments[i].value.c_str());
+            instrument &inst = controller::instruments[i];
+            if (inst.enabled) {
+                mvprintw(y++, 15, " volume=[%3d] | value=[ %s ]", inst.volume, inst.value.c_str());
             } else {
                 mvprintw(y++, 15, " volume=[N/A]  | value=[ ø ]");
             }
 
             ++y;
             int slice_height = (height - 3) / 4 - 3;
-            if (instruments[i].enabled) {
-                eval_with_params(i, 60, 1.0 / 220, width, buffer);
+            if (inst.enabled) {
+                controller::eval_with_params(i, 60, 1.0 / 220, width, buffer);
             }
 
             if (i == i_idx) {
+                char selector = playing ? '*' : '\'';
                 for (int j = 0; j < slice_height; ++j) {
-                    mvaddch(y + j, 0, ':');
+                    mvaddch(y + j, 0, selector);
                 }
             }
 
-            int last = y + slice_height * (1 + (double)instruments[i].volume / -100 * buffer[0]) / 2;
+            int last = y + slice_height * (1 - (double) inst.volume / 100 * buffer[0]) / 2;
             if (last < y) last = y;
             if (last > y + slice_height) last = y + slice_height;
             for (int j = 1; j < width; ++j) {
                 mvaddch(y + slice_height / 2, j, '-');
-                if (instruments[i].enabled) {
-                    int grid_y = y + slice_height * (1 + (double)instruments[i].volume / -100 * buffer[j]) / 2;
+                if (inst.enabled) {
+                    int grid_y = y + slice_height * (1 - (double) inst.volume / 100 * buffer[j]) / 2;
                     if (grid_y < y) grid_y = y;
                     if (grid_y > y + slice_height) grid_y = y + slice_height;
 
@@ -168,10 +171,12 @@ int mixer_view(int previous_view) {
             case '6':
             case '7':
             case '8':
+                controller::stop();
                 i_idx = c - 49;
                 break;
             case 's':
             case 'S':
+                controller::stop();
                 save_project();
                 break;
             case 'e':
@@ -181,17 +186,17 @@ int mixer_view(int previous_view) {
                 {
                     string ex = read_prompt("new value");
                     if (ex != "") {
-                        string prev = instruments[i_idx].value;
+                        string prev = controller::instruments[i_idx].value;
                         try {
-                            instruments[i_idx].value = ex;
-                            setup_instrument(i_idx, instruments[i_idx].value);
+                            controller::instruments[i_idx].value = ex;
+                            controller::setup_instrument(i_idx, controller::instruments[i_idx].value);
                             need_save = true;
-                            instruments[i_idx].enabled = true;
+                            controller::instruments[i_idx].enabled = true;
                             clear_status();
                         } catch (exception &e) {
                             // unable to compile
                             print_error(e.what());
-                            instruments[i_idx].value = prev;
+                            controller::instruments[i_idx].value = prev;
                         }
                     } else {
                         print_status("cancelled");
@@ -201,8 +206,9 @@ int mixer_view(int previous_view) {
             case 'd':
             case 'D':
                 if (read_yn("delete instrument?")) {
-                    if (instruments[i_idx].enabled) {
-                        remove_instrument(i_idx);
+                    if (controller::instruments[i_idx].enabled) {
+                        controller::remove_instrument(i_idx);
+                        controller::stop();
                         need_save = true;
                     }
                 }
@@ -214,7 +220,7 @@ int mixer_view(int previous_view) {
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
-                    instruments[i_idx].volume = volume;
+                    controller::instruments[i_idx].volume = volume;
                     need_save = true;
                 } 
                 break;
@@ -223,15 +229,18 @@ int mixer_view(int previous_view) {
             case KEY_UP:
                 // up 
                 if (i_idx > 0) --i_idx;
+                controller::stop();
                 break;
             case 'j':
             case 'J':
             case KEY_DOWN:
                 // down
                 if (i_idx < 7) ++i_idx;
+                controller::stop();
                 break;
             case 'l':
             case 'L':
+                controller::stop();
                 if (need_save && read_yn("save project?")) {
                     if (!save_project())
                         break;
@@ -240,27 +249,41 @@ int mixer_view(int previous_view) {
                 break;
             case 'q':
             case 'Q':
+                controller::stop();
                 if (read_yn("save and quit?")) {
                     save_and_quit();
                 }
                 break;
             case '\t':
+                controller::stop();
                 return SEQUENCER_VIEW;
             case 'h':
             case 'H':
+                controller::stop();
                 return HELP_VIEW;
+            case ' ':
+                if (playing) {
+                    controller::stop();
+                } else {
+                    if (!controller::instruments[i_idx].enabled)
+                        break;
+                    controller::play_note(i_idx, 60);
+                }
+                playing = !playing;
+                break;
 
         } 
 
         update();
     }
 
+    controller::stop();
     return 0;
 }
 
 
 int sequencer_view(int previous_view) {
-    
+   
     if (edit_mode) {
         curs_set(1);
     }
@@ -270,10 +293,11 @@ int sequencer_view(int previous_view) {
     new_note.start_vel = new_note.end_vel = 100;
 
     bool adding_note = false;
+    bool playing = false;
 
     while (1) {
         clear_screen();
-        mvprintw(0, 0, "SEQUENCER %s%s",
+        mvprintw(0, 0, "%s%s SEQUENCER",
                 has_name ? filename.c_str() : "[new file]",
                 need_save ? "*" : " ");
         mvprintw(0, 30, "PATTERN: [");
@@ -287,7 +311,9 @@ int sequencer_view(int previous_view) {
             }
         }
         mvaddch(0, 52, ']');
-        mvprintw(0, 54, "bpm=[%d] | ts=[%d/4] | %d measures", current_project.bpm, sequences[s_idx].ts, sequences[s_idx].length);
+
+        sequence &seq = controller::sequences[s_idx];
+        mvprintw(0, 54, "bpm=[%d] | ts=[%d/4] | %d measures", controller::current_project.bpm, seq.ts, seq.length);
         mvprintw(1, 27, "INSTRUMENT: [");
         for (int i = 0; i < 8; ++i) {
             if (i == i_idx) {
@@ -314,7 +340,7 @@ int sequencer_view(int previous_view) {
         int screen_height = bottom - top;
         int screen_width = right - left;
 
-        int measure_length = 16 * sequences[s_idx].ts;
+        int measure_length = 16 * seq.ts;
 
         for (int i = left - offset_time % measure_length; i < width; i += measure_length) {
             if (i >= left) {
@@ -325,10 +351,17 @@ int sequencer_view(int previous_view) {
         // note lines
         for (int i = screen_height - 1; i >= 0; --i) {
             int note = offset_note + i;
+            if (adding_note && i == cursor_y) {
+                attron(A_STANDOUT);
+            }
             char name = note_names[note % 12];
             if (name != ' ') {
                 int y = top + screen_height - i;
                 mvprintw(y, 0, "%c%d", name, note / 12);
+                if (adding_note && i == cursor_y) {
+                    attroff(A_STANDOUT);
+                }
+
                 if (name == 'A') {
                     for (int j = left; j < right; ++j) {
                         mvaddch(y, j, '.');
@@ -341,7 +374,7 @@ int sequencer_view(int previous_view) {
         int k = 0;
         for (int i = left - offset_time % measure_length; i < right; i += 16) {
             if (i >= left) {
-                if (k % sequences[s_idx].ts) {
+                if (k % seq.ts) {
                     for (int j = top + 1; j <= bottom; ++j) {
                         mvaddch(j, i, '.');
                     }
@@ -356,7 +389,7 @@ int sequencer_view(int previous_view) {
 
         int selected_idx = -1;
         int note_idx = 0;
-        for (evt_note &n: sequences[s_idx].notes) {
+        for (evt_note &n: seq.notes) {
             if ((   (n.start_note >= offset_note && n.end_note < offset_note + screen_height) ||
                     (n.start_note >= offset_note && n.end_note < offset_note + screen_height)
                 ) &&
@@ -369,22 +402,26 @@ int sequencer_view(int previous_view) {
                 int ydiff = top + screen_height - n.end_note + offset_note - ystart;
                 int xdiff = end - start;
                 int xval = 1;
+                int note_top = ydiff > 0 ? ystart + ydiff : ystart;
+                int note_bottom = ydiff > 0 ? ystart : ystart + ydiff;
 
                 // draw this note
                 if (n.instrument == i_idx) {
                     // see if we've highlighted a note
                     if (    selected_idx    == -1 && 
-                            start           == cursor_x && 
-                            ystart          == bottom - cursor_y) {
+                            start           <= cursor_x && 
+                            end             >  cursor_x &&
+                            note_top        >= bottom - cursor_y &&
+                            note_bottom     <= bottom - cursor_y) {
 
                         mvprintw(height - 1, 0, "[%d] note %d -> %d, vel: %d -> %d", 
                                  n.start, n.start_note, n.end_note, n.start_vel, n.end_vel);
 
                         selected_idx = note_idx;
+                        // this note is for the currently selected instrument
+                        attron(A_STANDOUT);
                     }
 
-                    // this note is for the currently selected instrument
-                    attron(A_STANDOUT);
                 }
 
                 // display the beginning of the note as bold
@@ -409,7 +446,7 @@ int sequencer_view(int previous_view) {
                 }
 
                 attroff(A_BOLD);
-                if (n.instrument == i_idx) {
+                if (selected_idx == i_idx) {
                     // this note is for the currently selected instrument
                     attroff(A_STANDOUT);
                 }
@@ -426,6 +463,7 @@ int sequencer_view(int previous_view) {
                 attron(A_STANDOUT);
                 mvaddch(y, left + x, note_chars[i_idx][0]);
                 attroff(A_STANDOUT);
+                controller::play_note(i_idx, offset_note + cursor_y);
             }
             move(bottom - cursor_y, cursor_x + left);
         }
@@ -610,10 +648,11 @@ int sequencer_view(int previous_view) {
             case 'x':
             case 'X':
                 if (edit_mode && selected_idx != -1) {
-                    sequences[i_idx].notes[selected_idx] = sequences[i_idx].notes.back();
-                    sequences[i_idx].notes.pop_back();
-                    sequences[i_idx].update_natural_length();
+                    seq.notes[selected_idx] = seq.notes.back();
+                    seq.notes.pop_back();
+                    seq.update_natural_length();
                     clear_status();
+                    need_save = true;
                 }
                 break;
             case 'n':
@@ -623,7 +662,8 @@ int sequencer_view(int previous_view) {
                         new_note.length = cursor_x + offset_time - new_note.start;
                         new_note.end_note = offset_note + cursor_y;
                         nl_last[i_idx] = new_note.length;
-                        sequences[s_idx].add_note(new_note);
+                        seq.add_note(new_note);
+                        need_save = true;
                     } else {
                         new_note.instrument = i_idx;
                         new_note.start_note = offset_note + cursor_y;
@@ -641,7 +681,8 @@ int sequencer_view(int previous_view) {
                 {
                     int ts = read_int("quarter notes per measure");
                     if (ts > 0) {
-                        sequences[s_idx].ts = ts;
+                        seq.ts = ts;
+                        need_save = true;
                     }
                 }
                 break;
@@ -649,8 +690,9 @@ int sequencer_view(int previous_view) {
                 // change sequence length
                 {
                     int length = read_int("sequence length in (number of measures)");
-                    if (length > sequences[s_idx].natural_length) {
-                        sequences[s_idx].length = length;
+                    if (length > seq.natural_length) {
+                        seq.length = length;
+                        need_save = true;
                     }
                 }
                 break;
@@ -659,9 +701,21 @@ int sequencer_view(int previous_view) {
                 {
                     int bpm = read_int("bpm");
                     if (bpm > 0) {
-                        current_project.bpm = bpm;
+                        controller::current_project.bpm = bpm;
+                        need_save = true;
                     }
                 }
+                break;
+            case ' ':
+                // play sequence
+                if (playing) {
+                    controller::stop();
+                    print_status("done");
+                } else {
+                    print_status("playing...");
+                    controller::play_sequence(s_idx);
+                }
+                playing = !playing;
                 break;
         }
     }
@@ -716,6 +770,14 @@ int help_view(int previous_view) {
 
     if (previous_view == HELP_VIEW) 
         previous_view = MIXER_VIEW;
+    return previous_view;
+}
+
+
+int dj_view(int previous_view) {
+    controller::stop();
+
+
     return previous_view;
 }
 
@@ -821,7 +883,7 @@ bool save_project() {
 
         ofstream out("/opt/chippy_files/" + s_filename + ".chip");
         if (out.is_open()) {
-            out << current_project;
+            out << controller::current_project;
             out.close();
             has_name = true;
             need_save = false;
@@ -846,20 +908,19 @@ load_project_begin:
         }
         ifstream in("/opt/chippy_files/" + l_filename + ".chip");
         if (in.is_open()) {
-            in >> current_project;
+            in >> controller::current_project;
             need_save = false;
             has_name = false;
             print_status("loaded /opt/chippy_files/" + l_filename + ".chip");
             filename = l_filename;
             need_save = false;
             has_name = true;
-            for (int i = 0; i < 4; ++i) {
-                remove_instrument(i);
-                if (instruments[i].enabled) {
-                    setup_instrument(i, instruments[i].value);
+            for (int i = 0; i < 8; ++i) {
+                controller::remove_instrument(i);
+                if (controller::instruments[i].enabled) {
+                    controller::setup_instrument(i, controller::instruments[i].value);
                 }
             }
-            mvprintw(height-1, 0, "loaded %d notes", sequences[0].notes.size());
             return true;
         } else {
             print_error("unable to open " + l_filename);
@@ -900,7 +961,7 @@ void update() {
 void cleanup() {
     delwin(win);
     endwin();
-    controller_stop();
+    controller::destroy();
     refresh();
 }
 
@@ -920,6 +981,8 @@ int main(void) {
     signal(SIGINT,  onsignal);
     signal(SIGHUP,  onsignal);
     signal(SIGTERM, onsignal);
+
+    controller::init();
 
     for (int i = 0; i < 10; ++i) {
         mvprintw(height / 2 - 5 + i, width / 2 - 22, logo[i].c_str());
