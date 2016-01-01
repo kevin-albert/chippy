@@ -11,48 +11,56 @@ using namespace std;
 #include "expr.h"
 #include "pcm_wrapper.h"
 #include "synth_api.h"
+#include "io.h"
 
 namespace controller {
     project current_project;
     instrument *instruments = current_project.instruments;
     sequence *sequences = current_project.sequences;
-    expr<float> expressions[8];
+    expr<float> expressions[NUM_INSTRUMENTS];
     expr_context ctx;
     int current_step {-1};
 
-    static volatile bool done {true};
-    static volatile bitset<4> enabled_sequences;
+    volatile bool playing   {false};
+    volatile bool available {true};
 
-    static void play_note_loop(const int instrument, const int note);
-    static void play_sequence_loop(const int sequence);
-    static void dj_loop();
+    void play_note_loop(const int instrument, const int note, void (cb()));
+    void play_sequence_loop(const int sequence, void (cb()));
+    void dj_loop(void (cb()));
+    thread audio_thread;
 
-    static thread audio_thread;
-
+    expr<float> default_instrument;
 
     void init() {
-        ctx.define("sin", synth::sin);
-        ctx.define("saw", synth::saw);
-        ctx.define("sqr", synth::sqr);
-        ctx.define("sin_t", synth::sin_t);
-        ctx.define("saw_t", synth::saw_t);
-        ctx.define("sqr_t", synth::sqr_t);
-        ctx.define("sin_tq", synth::sin_tq);
-        ctx.define("saw_tq", synth::saw_tq);
-        ctx.define("sqr_tq", synth::sqr_tq);
-        ctx.define("root", synth::root);
-        ctx.define("scale", synth::scale);
-        ctx.define("mix", synth::mix);
-        ctx.define("env_t", synth::env_t); 
-        ctx.define("env_tq", synth::env_tq); 
+        ctx.var("t",       &synth::t);
+        ctx.var("f",       &synth::f);
+        ctx.var("tq",      &synth::tq);
+        ctx.var("w",       &synth::w);
+        ctx.var("nl",      &synth::nl);
+        ctx.var("nlq",     &synth::nlq);
+        ctx.var("nt",      &synth::nt);
+        ctx.var("ntq",     &synth::ntq);
+        ctx.func("sin",     synth::sin);
+        ctx.func("saw",     synth::saw);
+        ctx.func("sqr",     synth::sqr);
+        ctx.func("sin_t",   synth::sin_t);
+        ctx.func("saw_t",   synth::saw_t);
+        ctx.func("sqr_t",   synth::sqr_t);
+        ctx.func("sin_tq",  synth::sin_tq);
+        ctx.func("saw_tq",  synth::saw_tq);
+        ctx.func("sqr_tq",  synth::sqr_tq);
+        ctx.func("root",    synth::root);
+        ctx.func("scale",   synth::scale);
+        ctx.func("mix",     synth::mix);
+        ctx.func("env",     synth::env_tq); 
+        ctx.func("env_t",   synth::env_t); 
         pcm_open();
+        default_instrument = expr<float>(ctx, "mix(saw(1), sqr(1), nl * 4 + 0.5)");
+        trace("done");
     }
 
 
     void setup_instrument(int id, const string &ex) {
-        if (id < 0 || id >= 8) {
-            throw invalid_argument("invalid track index");
-        }
         expressions[id] = expr<float>(ctx, ex);
         instruments[id].enabled = true;
     }
@@ -65,47 +73,77 @@ namespace controller {
 
 
     void stop() {
-        if (!done) {
-            done = true;
+        trace("enter");
+        if (!available) {
+            trace("available = false, joining audio_thread");
+            playing = false;
             audio_thread.join();
         } 
         synth::reset_frame();
+        available = true;
+        playing = false;
+        trace("available = true, playing = false");
     }
 
-
-    void play_note(const int instrument, const int note) {
+    void reset() {
+        trace("enter");
         stop();
-        done = false;
-        audio_thread = thread(play_note_loop, instrument, note);
+        available = false;
+        playing = true;
+        trace("available = false, playing = true");
+    }
+
+    void done() {
+        available = true;
+        playing = false;
+        trace("available = true, playing = false");
+    }
+
+    void play_note(const int instrument, const int note, void (cb())) {
+        trace("resetting...");
+        reset();
+        audio_thread = thread(play_note_loop, instrument, note, cb);
+        trace("started play_note_loop");
     }
 
 
-    void play_note_loop(const int instrument, const int note) {
-
+    void play_note_loop(const int instrument, const int note, void (cb())) {
+        
         evt_note n;
         n.start = 0;
         n.length = 16 * 4 * 32;
         n.start_note = n.end_note = note;
         n.start_vel = n.end_vel = 100;
 
-        while (!done) {
+        expr<float> &inst = instruments[instrument].enabled ?
+            expressions[instrument] : default_instrument;
+
+        while (playing) {
+            trace("generating samples");
             for (int i = 0; i < BUFFER_LEN; ++i) {
                 if (synth::set_note(n) == 1) {
                     synth::reset_frame();
                 }
                 synth::incr_frame(60);
                 synth::set_note(n);
-                float val = (float) instruments[instrument].volume / 100 * 
-                                    expressions[instrument].eval();
+                float val = (float) instruments[instrument].volume / 100 * inst.eval();
                 audio_buffer[i] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                   (uint8_t) (0x40 + (val+1)*64);
             }
+            trace("writing samples");
             pcm_write();
+            trace("playing = " << playing);
         }
+        
+        trace("exited loop\n");
+
+        cb();
+        done();
+        trace("play_note_loop finished");
     }
 
 
-    void write_blank_frames(int n, int &ptr) {
+    bool write_blank_frames(int n, int &ptr) {
         while (n > 0) {
             int end = min(BUFFER_LEN, ptr + n);
             int start = ptr;
@@ -118,20 +156,23 @@ namespace controller {
                 ptr = 0;
             }
             n -= end - start;
-            if (done)
-                break;
+            if (!playing)
+                return false;
                 
         }
+
+        return true;
     }
 
 
-    void play_sequence(const int s_idx) {
-        stop();
-        done = false;
-        audio_thread = thread(play_sequence_loop, s_idx);
+    void play_sequence(const int s_idx, void (cb())) {
+        trace("resetting...");
+        reset();
+        audio_thread = thread(play_sequence_loop, s_idx, cb);
+        trace("started play_sequence_loop");
     }
 
-    void play_sequence_loop(const int s_idx) {
+    void play_sequence_loop(const int s_idx, void (cb())) {
         sequence &s = sequences[s_idx];
 
         // iterate through the notes in sorted order
@@ -142,19 +183,16 @@ namespace controller {
         // range of notes being played
         auto start = s.notes.begin(), end = start;
         auto last = s.notes.end();
-
         int ptr = 0;
-
-        ofstream debug("/opt/chippy_files/debug.txt");
 
         while (start < last) {
             if (start >= end) {
                 // wait until we have a note
-                write_blank_frames(synth::frames_until(*start), ptr);
+                if (!write_blank_frames(synth::frames_until(*start), ptr)) {
+                    goto sequence_loop_done;
+                }
                 end = start + 1;
             }
-
-            debug << "start=" << (int) start->start_note << endl;
 
             // find all other notes playing at this time
             int note_time = 0;
@@ -166,7 +204,6 @@ namespace controller {
                             break;
                     }
                 }
-                debug << "end=" << (int) end->start_note << endl;
             }
 
             // sort the current range according to note end
@@ -176,66 +213,67 @@ namespace controller {
 
             // we're playing the last note
             if (note_time == 0) {
-                debug << "(last note)\n";
                 evt_note sample;
                 const evt_note latest = *(end-1);
                 sample.start = latest.start + latest.length;
                 sample.length = 0;
                 note_time = synth::frames_until(sample);
-            } else {
-                debug << "note time: " << note_time << endl;
             }
 
-            debug << "playing for " << note_time << " frames\n";
             while (start < end) {
                 float val = 0;
                 for (auto itor = start; itor < end; ++itor) {
                     const evt_note n = *itor;
                     if (synth::set_note(n) == 0) {
-                        debug << (int) n.start_note << " ";
                         val += (float) instruments[n.instrument].volume / 100 * 
                                        expressions[n.instrument].eval();
                     } else {
-                        debug << "done with " << (int) itor->start_note << endl;
                         start = itor + 1;
                     } 
                 }
+
                 audio_buffer[ptr] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                     (uint8_t) (0x40 + (val+1)*64);
                 if (ptr == BUFFER_LEN) {
-                    if (done) 
-                        return;
+                    if (!playing) {
+                        goto sequence_loop_done;
+                    }
 
                     pcm_write();
                     ptr = 0;
                 }
-                debug << endl;
                 synth::incr_frame(current_project.bpm);
                 if (--note_time < 0)
                     break;
             }
         }
 
-        int sequence_length = min(s.length, s.natural_length);
-        evt_note dummy;
-        dummy.start = sequence_length * s.ts;
-        write_blank_frames(synth::frames_until(dummy), ptr);
-        if (ptr > 0) {
-            write_blank_frames(BUFFER_LEN-ptr, ptr);
+        {
+            int sequence_length = min(s.length, s.natural_length);
+            evt_note dummy;
+            dummy.start = sequence_length * s.ts;
+            if (!write_blank_frames(synth::frames_until(dummy), ptr)) {
+                goto sequence_loop_done;
+            }
+            if (ptr > 0) {
+                if (!write_blank_frames(BUFFER_LEN-ptr, ptr)) {
+                    goto sequence_loop_done;
+                }
+            }
         }
-        debug << "done\n";
-        debug.close();
-        done = true;
+
+sequence_loop_done:
+        cb();
+        done();
+        trace("play_sequence_loop done");
     }
 
     void eval_with_params(int id, int note, double seconds, int length, float *buffer) {
-        stop();
-        if (id < 0 || id >= 8) {
-            throw invalid_argument("invalid track index");
-        }
         if (!instruments[id].enabled) {
             return;
         }
+        
+        reset();
         evt_note n;
         n.start = 0;
         n.length = 16;
@@ -246,11 +284,15 @@ namespace controller {
             synth::set_note(n);
             buffer[i] = expressions[id].eval();
         }
+        done();
     }
 
     void destroy() {
+        trace("started destroy()");
         stop();
         pcm_close();
+        trace("controller destroyed");
     }
 }
+
 

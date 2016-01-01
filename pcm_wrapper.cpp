@@ -18,6 +18,8 @@
 
 using namespace std;
 #include "pcm_wrapper.h"
+#include "io.h"
+
 
 uint8_t audio_buffer[BUFFER_LEN];
 
@@ -125,6 +127,7 @@ void pcm_write() {
     }
 #else
 
+    /*
     for (int i = 0; i < BUFFER_LEN; ++i) {
         for (int j = 0; j < audio_buffer[i] / 2; ++j) {
             pcm_out << ' ';
@@ -133,6 +136,7 @@ void pcm_write() {
     }
 
     this_thread::sleep_for(chrono::milliseconds(100));
+    */
 
 #endif
 }
@@ -144,4 +148,68 @@ void pcm_close() {
     pcm_out.close();
 #endif
 }
+
+struct wav_file_header {
+    wav_file_header(uint32_t data_size):
+        size(sizeof(wav_file_header) + data_size * 2 - 8),
+        data_size(data_size * 2) {
+    }
+        
+    const uint32_t riff               {0x52494646};
+    const uint32_t size;
+    const uint32_t wave               {0x57415645};
+    const uint32_t fmt_label          {0x666d7420};
+    const uint32_t fmt_length         {16};
+    const uint16_t fmt_type           {1};
+    const uint16_t fmt_num_channels   {1};
+    const uint32_t fmt_sample_rate    {SAMPLE_FREQUENCY};
+    const uint32_t fmt_bps            {SAMPLE_FREQUENCY * 2};
+    const uint16_t fmt_block_align    {16};
+    const uint16_t fmt_bitrate        {16};
+    const uint32_t data_label         {0x64616461};
+    const uint32_t data_size;
+};
+
+#include <cmath>
+void pcm_write_wav(ostream &out, const uint8_t *data, const uint32_t data_size) {
+    wav_file_header header(data_size);
+    write_stream(out,    to_big_endian(header.riff));
+    write_stream(out, to_little_endian(header.size));
+    write_stream(out,    to_big_endian(header.wave));
+    write_stream(out,    to_big_endian(header.fmt_label));
+    write_stream(out, to_little_endian(header.fmt_length));
+    write_stream(out, to_little_endian(header.fmt_type));
+    write_stream(out, to_little_endian(header.fmt_num_channels));
+    write_stream(out, to_little_endian(header.fmt_sample_rate));
+    write_stream(out, to_little_endian(header.fmt_bps));
+    write_stream(out, to_little_endian(header.fmt_block_align));
+    write_stream(out, to_little_endian(header.fmt_bitrate));
+    write_stream(out,    to_big_endian(header.data_label));
+    write_stream(out, to_little_endian(header.data_size));
+    for (uint32_t i = 0; i < data_size; ++i) {
+        int16_t value = sin(((double) i * 2 * 3.14159 * 440 ) / SAMPLE_FREQUENCY) * 0xffff;
+        out.put(value & 0xff).put((value << 8) & 0xff);
+    }
+    //out.write(reinterpret_cast<const char*>(data), data_size);
+}
+
+
+#ifdef WAV_TEST
+#include <iostream>
+int main(void) {
+    const uint32_t size = SAMPLE_FREQUENCY * 3;
+    uint8_t wav_data[size];
+    for (int i = 0; i < size; ++i) {
+        wav_data[i] = (uint8_t) i / 10;
+    }
+
+    ofstream out("/opt/chippy_files/test.wav");
+    pcm_write_wav(out, wav_data, SAMPLE_FREQUENCY * 3);
+    out.close();
+
+    return 0;
+}
+#endif
+
+
 

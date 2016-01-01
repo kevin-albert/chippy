@@ -9,18 +9,8 @@
 
 using namespace std;
 #include "project.h"
+#include "io.h"
 
-template <typename T>
-static T read_stream(istream &input) {
-    T value;
-    input.read(reinterpret_cast<char*>(&value), sizeof value);
-    return value;
-}
-
-template <typename T>
-static void write_stream(ostream &output, const T value) {
-    output.write(reinterpret_cast<const char*>(&value), sizeof value);
-}
 
 istream &operator>>(istream &input, evt_note &n) {
     n = read_stream<evt_note>(input);
@@ -108,10 +98,10 @@ ostream &operator<<(ostream &output, const project &p) {
     output << "chippy\n"
            << p.name << "\n"
            << p.bpm << "\n";
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
         output << p.instruments[i];
     }
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < NUM_SEQUENCES; ++i) {
         output << p.sequences[i];
     }
     return output;
@@ -124,11 +114,10 @@ istream &operator>>(istream &input, project &p) {
     if (!getline(input, p.name))    throw invalid_argument("truncated project file");
 
     input >> p.bpm;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
         input >> p.instruments[i];
     }
-    //input.ignore();
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < NUM_SEQUENCES; ++i) {
         input >> p.sequences[i];
     }
     return input;

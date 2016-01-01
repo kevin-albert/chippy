@@ -7,6 +7,7 @@
 using namespace std;
 #include "project.h"
 #include "controller.h"
+#include "io.h"
 
 #define MIXER_VIEW      1
 #define SEQUENCER_VIEW  2
@@ -26,6 +27,8 @@ string logo[] = {
 };
 
 void onsignal(int);
+void done_playing(void);
+void show_playing(void);
 void cleanup(void);
 void save_and_quit(void);
 void update(void);
@@ -65,7 +68,8 @@ int s_idx       {0};
 int i_idx       {0};
 int cursor_x    {0};
 int cursor_y    {12};
-uint16_t nl_last[] = {4, 4, 4, 4, 4, 4, 4, 4};
+uint16_t nl_last[] = {4, 4, 4, 4, 4, 4, 4, 4,
+                      4, 4, 4, 4, 4, 4, 4, 4};
 const char note_names[13] = "A BC D EF G ";
 bool quit_now = false;
 
@@ -86,7 +90,6 @@ WINDOW *win;
 
 int mixer_view(int previous_view) {
     int c;
-    bool playing = false;
     while (1) {
 
         clear_screen();
@@ -98,13 +101,9 @@ int mixer_view(int previous_view) {
         mvprintw(1, 0, "1-8: Navigate, S: save, L: load, E: edit track, D: delete track, V: volume");
 
         float buffer[width];
-        int i_start = 0;
-        int i_end = 4;
+        int i_start = i_idx / 4;
+        int i_end = i_start + 4;
         int height_offset = 0;
-        if (i_idx > 3) {
-            i_start = 4;
-            i_end = 8;
-        }
         for (int i = i_start; i < i_end; ++i) {
             int y = 2 + ((height - 3) * (i - i_start)) / 4;
             mvprintw(y, 2, "INSTRUMENT %d:", i + 1);
@@ -122,7 +121,7 @@ int mixer_view(int previous_view) {
             }
 
             if (i == i_idx) {
-                char selector = playing ? '*' : '\'';
+                char selector = controller::playing ? '*' : '\'';
                 for (int j = 0; j < slice_height; ++j) {
                     mvaddch(y + j, 0, selector);
                 }
@@ -132,6 +131,7 @@ int mixer_view(int previous_view) {
             if (last < y) last = y;
             if (last > y + slice_height) last = y + slice_height;
             for (int j = 1; j < width; ++j) {
+                // print center line
                 mvaddch(y + slice_height / 2, j, '-');
                 if (inst.enabled) {
                     int grid_y = y + slice_height * (1 - (double) inst.volume / 100 * buffer[j]) / 2;
@@ -162,6 +162,7 @@ int mixer_view(int previous_view) {
         update();
         c = getch();
         clear_status();
+mixer_view_switch:
         switch (c) {
             case '1':
             case '2':
@@ -171,17 +172,21 @@ int mixer_view(int previous_view) {
             case '6':
             case '7':
             case '8':
-                controller::stop();
                 i_idx = c - 49;
+                trace("changing to instrument " << i_idx);
+                controller::stop();
                 break;
             case 's':
             case 'S':
+                trace("saving");
                 controller::stop();
                 save_project();
                 break;
             case 'e':
             case 'E':
             case '\n':
+            case ':':
+            case ';':
                 // edit
                 {
                     string ex = read_prompt("new value");
@@ -207,6 +212,7 @@ int mixer_view(int previous_view) {
             case 'D':
                 if (read_yn("delete instrument?")) {
                     if (controller::instruments[i_idx].enabled) {
+                        trace("deleting instrument " << i_idx);
                         controller::remove_instrument(i_idx);
                         controller::stop();
                         need_save = true;
@@ -217,6 +223,8 @@ int mixer_view(int previous_view) {
             case 'V':
                 // volume
                 {
+                    trace("changing volume");
+                    controller::stop();
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
@@ -229,6 +237,7 @@ int mixer_view(int previous_view) {
             case KEY_UP:
                 // up 
                 if (i_idx > 0) --i_idx;
+                trace("changing to instrument " << i_idx);
                 controller::stop();
                 break;
             case 'j':
@@ -236,10 +245,11 @@ int mixer_view(int previous_view) {
             case KEY_DOWN:
                 // down
                 if (i_idx < 7) ++i_idx;
-                controller::stop();
+                trace("changing to instrument " << i_idx);
                 break;
             case 'l':
             case 'L':
+                trace("loading new project");
                 controller::stop();
                 if (need_save && read_yn("save project?")) {
                     if (!save_project())
@@ -249,27 +259,50 @@ int mixer_view(int previous_view) {
                 break;
             case 'q':
             case 'Q':
+                trace("quitting");
                 controller::stop();
                 if (read_yn("save and quit?")) {
                     save_and_quit();
                 }
                 break;
             case '\t':
-                controller::stop();
                 return SEQUENCER_VIEW;
             case 'h':
             case 'H':
-                controller::stop();
                 return HELP_VIEW;
             case ' ':
-                if (playing) {
+                // play sequence
+                if (controller::playing) {
+                    trace("toggle play off");
                     controller::stop();
                 } else {
-                    if (!controller::instruments[i_idx].enabled)
-                        break;
-                    controller::play_note(i_idx, 60);
+                    trace("toggle play sequence on");
+                    show_playing();
+                    controller::play_sequence(s_idx, done_playing);
                 }
-                playing = !playing;
+                break;
+            case 'p':
+            case 'P':
+                // play note
+                if (controller::instruments[i_idx].enabled) {
+                    trace("play note");
+                    show_playing();
+                    controller::play_note(i_idx, 60, done_playing);
+                    nodelay();
+                    while (controller::playing) {
+                        int v = getch();
+                        // stop playing
+                        if (v != ERR) {
+                            delay();
+                            trace("stop playing note");
+                            controller::stop();
+                            c = v;
+                            goto mixer_view_switch;
+                        }
+
+                        this_thread::sleep_for(chrono::milliseconds(100));
+                    }
+                }
                 break;
 
         } 
@@ -277,7 +310,6 @@ int mixer_view(int previous_view) {
         update();
     }
 
-    controller::stop();
     return 0;
 }
 
@@ -293,7 +325,6 @@ int sequencer_view(int previous_view) {
     new_note.start_vel = new_note.end_vel = 100;
 
     bool adding_note = false;
-    bool playing = false;
 
     while (1) {
         clear_screen();
@@ -301,19 +332,19 @@ int sequencer_view(int previous_view) {
                 has_name ? filename.c_str() : "[new file]",
                 need_save ? "*" : " ");
         mvprintw(0, 30, "PATTERN: [");
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < NUM_SEQUENCES; ++i) {
             if (i == s_idx) {
                 attron(A_STANDOUT);
             }
-            mvprintw(0, 41 + 3 * i, "%d", i + 1);
+            mvprintw(0, 41 + 4 * i, "%2d", i + 1);
             if (i == s_idx) {
                 attroff(A_STANDOUT);
             }
         }
-        mvaddch(0, 52, ']');
+        mvaddch(0, 42 + 4 * NUM_SEQUENCES, ']');
 
         sequence &seq = controller::sequences[s_idx];
-        mvprintw(0, 54, "bpm=[%d] | ts=[%d/4] | %d measures", controller::current_project.bpm, seq.ts, seq.length);
+        mvprintw(0, 46 + 4 * NUM_SEQUENCES, "bpm=[%d] | ts=[%d/4] | %d measures", controller::current_project.bpm, seq.ts, seq.length);
         mvprintw(1, 27, "INSTRUMENT: [");
         for (int i = 0; i < 8; ++i) {
             if (i == i_idx) {
@@ -351,14 +382,19 @@ int sequencer_view(int previous_view) {
         // note lines
         for (int i = screen_height - 1; i >= 0; --i) {
             int note = offset_note + i;
-            if (adding_note && i == cursor_y) {
+            char name = note_names[note % 12];
+            int y = top + screen_height - i;
+            if (edit_mode && i == cursor_y) {
                 attron(A_STANDOUT);
             }
-            char name = note_names[note % 12];
-            if (name != ' ') {
-                int y = top + screen_height - i;
+            if (name == ' ') {
+                mvprintw(y, 0, "   ", name);
+                if (edit_mode && i == cursor_y) {
+                    attroff(A_STANDOUT);
+                }
+            } else {
                 mvprintw(y, 0, "%c%d", name, note / 12);
-                if (adding_note && i == cursor_y) {
+                if (edit_mode && i == cursor_y) {
                     attroff(A_STANDOUT);
                 }
 
@@ -389,72 +425,6 @@ int sequencer_view(int previous_view) {
 
         int selected_idx = -1;
         int note_idx = 0;
-        for (evt_note &n: seq.notes) {
-            if ((   (n.start_note >= offset_note && n.end_note < offset_note + screen_height) ||
-                    (n.start_note >= offset_note && n.end_note < offset_note + screen_height)
-                ) &&
-                (n.start + n.length > offset_time || n.start < offset_time + width)) {
-
-                char disp = note_chars[n.instrument][1];
-                int start = n.start - offset_time;
-                int end = n.start - offset_time + n.length;
-                int ystart = top + screen_height - n.start_note + offset_note;
-                int ydiff = top + screen_height - n.end_note + offset_note - ystart;
-                int xdiff = end - start;
-                int xval = 1;
-                int note_top = ydiff > 0 ? ystart + ydiff : ystart;
-                int note_bottom = ydiff > 0 ? ystart : ystart + ydiff;
-
-                // draw this note
-                if (n.instrument == i_idx) {
-                    // see if we've highlighted a note
-                    if (    selected_idx    == -1 && 
-                            start           <= cursor_x && 
-                            end             >  cursor_x &&
-                            note_top        >= bottom - cursor_y &&
-                            note_bottom     <= bottom - cursor_y) {
-
-                        mvprintw(height - 1, 0, "[%d] note %d -> %d, vel: %d -> %d", 
-                                 n.start, n.start_note, n.end_note, n.start_vel, n.end_vel);
-
-                        selected_idx = note_idx;
-                        // this note is for the currently selected instrument
-                        attron(A_STANDOUT);
-                    }
-
-                }
-
-                // display the beginning of the note as bold
-                if (start >= 0 && end - start == n.length) {
-                    attron(A_BOLD);
-                    mvaddch(ystart, left + start++, note_chars[n.instrument][0]);
-                    attroff(A_BOLD);
-                }
-
-                while (start < end) {
-                    ++xval;
-                    if (start >= 0 && start < screen_width) {
-                        if (start == end - 1) {
-                            disp = note_chars[n.instrument][2];
-                            attron(A_BOLD);
-                        }
-                        int y = ystart + ydiff * xval / xdiff;
-                        if (y > top && y <= bottom) 
-                            mvaddch(y, left + start, disp);
-                    }
-                    ++start;
-                }
-
-                attroff(A_BOLD);
-                if (selected_idx == i_idx) {
-                    // this note is for the currently selected instrument
-                    attroff(A_STANDOUT);
-                }
-
-            }
-            
-            ++note_idx;
-        }
 
         if (edit_mode) {
             if (adding_note) {
@@ -463,8 +433,78 @@ int sequencer_view(int previous_view) {
                 attron(A_STANDOUT);
                 mvaddch(y, left + x, note_chars[i_idx][0]);
                 attroff(A_STANDOUT);
-                controller::play_note(i_idx, offset_note + cursor_y);
             }
+
+            // display notes
+            for (evt_note &n: seq.notes) {
+                if ((   (n.start_note >= offset_note && n.end_note < offset_note + screen_height) ||
+                        (n.start_note >= offset_note && n.end_note < offset_note + screen_height)
+                    ) &&
+                    (n.start + n.length > offset_time || n.start < offset_time + width)) {
+
+                    char disp = note_chars[n.instrument][1];
+                    int start = n.start - offset_time;
+                    int end = n.start - offset_time + n.length;
+                    int ystart = top + screen_height - n.start_note + offset_note;
+                    int ydiff = top + screen_height - n.end_note + offset_note - ystart;
+                    int xdiff = end - start;
+                    int xval = 1;
+                    int note_top = ydiff > 0 ? ystart + ydiff : ystart;
+                    int note_bottom = ydiff > 0 ? ystart : ystart + ydiff;
+
+                    // draw this note
+                    if (n.instrument == i_idx) {
+                        // see if we've highlighted a note
+                        if (    !adding_note && 
+                                selected_idx    == -1 && 
+                                start           <= cursor_x && 
+                                end             >  cursor_x &&
+                                note_top        >= bottom - cursor_y &&
+                                note_bottom     <= bottom - cursor_y) {
+
+                            mvprintw(height - 1, 0, "[%d] note %d -> %d, vel: %d -> %d", 
+                                     n.start, n.start_note, n.end_note, n.start_vel, n.end_vel);
+
+                            selected_idx = note_idx;
+                            // this note is for the currently selected instrument
+                            attron(A_STANDOUT);
+                        }
+
+                    }
+
+                    // display the beginning of the note as bold
+                    if (start >= 0 && end - start == n.length) {
+                        attron(A_BOLD);
+                        mvaddch(ystart, left + start++, note_chars[n.instrument][0]);
+                        attroff(A_BOLD);
+                    }
+
+                    while (start < end) {
+                        ++xval;
+                        if (start >= 0 && start < screen_width) {
+                            if (start == end - 1) {
+                                disp = note_chars[n.instrument][2];
+                                attron(A_BOLD);
+                            }
+                            int y = ystart + ydiff * xval / xdiff;
+                            if (y > top && y <= bottom) 
+                                mvaddch(y, left + start, disp);
+                        }
+                        ++start;
+                    }
+
+                    attroff(A_BOLD);
+                    if (selected_idx == i_idx) {
+                        // this note is for the currently selected instrument
+                        attroff(A_STANDOUT);
+                    }
+
+                }
+                
+                ++note_idx;
+            }
+
+            // move the cursor
             move(bottom - cursor_y, cursor_x + left);
         }
 
@@ -475,10 +515,48 @@ int sequencer_view(int previous_view) {
             measure_length /= 2;
         }
         switch (c) {
+            case '0':
+                trace("change sequence: 0%");
+                controller::stop();
+                print_status("change sequence [1-9]");
+                c = getch();
+                if (c == '1') {
+                    s_idx = 0;
+                    break;
+                } else {
+                    goto select_sequence_gt2;
+                }
             case '1':
+                trace("change sequence: 1%");
+                controller::stop();
+                print_status("change sequence [10-16] (SPACE selects sequence 1)");
+                c = getch();
+                switch (c) {
+                    case ' ':
+                        s_idx = 0;
+                        break;
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                        s_idx = 10 + c - 49;
+                        break;
+                }
+                break;
+select_sequence_gt2:
             case '2':
             case '3':
             case '4': 
+            case '5': 
+            case '6': 
+            case '7': 
+            case '8': 
+            case '9': 
+                trace("change sequence: 1-9");
+                controller::stop();
                 s_idx = c - 49;
                 break;
             case 's':
@@ -619,7 +697,7 @@ int sequencer_view(int previous_view) {
                 break;
             case 'i':
             case 'I':
-                print_status("change instrument [1-4]");
+                print_status("change instrument [1-8]");
                 c = getch();
                 switch (c) {
                     case '1':
@@ -708,14 +786,28 @@ int sequencer_view(int previous_view) {
                 break;
             case ' ':
                 // play sequence
-                if (playing) {
+                if (controller::playing) {
+                    trace("toggle play off");
                     controller::stop();
-                    print_status("done");
                 } else {
-                    print_status("playing...");
-                    controller::play_sequence(s_idx);
+                    trace("toggle sequence on");
+                    show_playing();
+                    controller::play_sequence(s_idx, done_playing);
                 }
-                playing = !playing;
+                break;
+            case 'p':
+            case 'P':
+                // play note
+                if (controller::playing) {
+                    trace("toggle play off");
+                    controller::stop();
+                } else {
+                    if (controller::instruments[i_idx].enabled) {
+                        trace("toggle note on");
+                        show_playing();
+                        controller::play_note(i_idx, 60, done_playing);
+                    }
+                }
                 break;
         }
     }
@@ -751,7 +843,7 @@ int help_view(int previous_view) {
     mvprintw(11, 32, "[T]       Change sequence length");
     mvprintw(12, 32, "[SHIFT+T] Change time signature");
     mvprintw(13, 32, "[E]       Edit sequence");
-    mvprintw(14, 32, "[1-4]     Select sequence");
+    mvprintw(14, 32, "[1-16]    Select sequence");
     mvprintw(15, 32, "[I]       Select instrument");
     mvprintw(16, 32, "[K]       In edit mode: Go up");
     mvprintw(17, 32, "[J]       In edit mode: Go down");
@@ -773,14 +865,11 @@ int help_view(int previous_view) {
     return previous_view;
 }
 
-
 int dj_view(int previous_view) {
-    controller::stop();
 
 
     return previous_view;
 }
-
 
 void print_error(const string &error) {
     move(height - 1, 0);
@@ -790,7 +879,6 @@ void print_error(const string &error) {
     getch();
 }
 
-
 void print_status(const string &status) {
     move(height - 1, 0);
     clrtoeol();
@@ -798,13 +886,11 @@ void print_status(const string &status) {
     update();
 }
 
-
 void clear_status() {
     move(height - 1, 0);
     clrtoeol();
     update();
 }
-
 
 string read_prompt(const string &prompt) {
     echo();
@@ -820,7 +906,6 @@ string read_prompt(const string &prompt) {
     update();
     return val;
 }
-
 
 int read_int(const string &prompt) {
     echo();
@@ -839,7 +924,6 @@ int read_int(const string &prompt) {
     update();
     return val;
 }
-
 
 bool read_yn(const string &prompt) {
     move(height - 1, 0);
@@ -861,16 +945,16 @@ bool read_yn(const string &prompt) {
     }
 }
 
-
 void clear_screen() {
-    for (int i = 0; i < height - 1; ++i) {
-        move(i, 0);
-        clrtoeol();
-    }
+    clear();
+    if (controller::playing) {
+        show_playing();
+    } 
 }
 
-
 bool save_project() {
+    trace("stopping");
+    controller::stop();
     while (1) {
         string s_filename = filename;
         if (!has_name) {
@@ -897,8 +981,9 @@ bool save_project() {
     }
 }
 
-
 bool load_project() {
+    trace("stopping");
+    controller::stop();
     while (1) {
 load_project_begin:
         string l_filename = read_prompt("project name");
@@ -915,7 +1000,7 @@ load_project_begin:
             filename = l_filename;
             need_save = false;
             has_name = true;
-            for (int i = 0; i < 8; ++i) {
+            for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
                 controller::remove_instrument(i);
                 if (controller::instruments[i].enabled) {
                     controller::setup_instrument(i, controller::instruments[i].value);
@@ -928,7 +1013,6 @@ load_project_begin:
     }
 }
 
-
 void save_and_quit() {
     quit_now = true;
     if (need_save) {
@@ -940,14 +1024,16 @@ void save_and_quit() {
     exit(0);
 }
 
-
 void onsignal(int signum) {
-
+    trace("signal = " << signum << ", quit_now = " << quit_now);
     if (!quit_now) {
         save_and_quit();
     }
 
+    trace("invoking clenup()");
     cleanup();
+    trace("exiting...");
+    debug.close();
     exit(0);
 }
 
@@ -957,7 +1043,6 @@ void update() {
     getmaxyx(win, height, width);
 }
 
-
 void cleanup() {
     delwin(win);
     endwin();
@@ -965,9 +1050,18 @@ void cleanup() {
     refresh();
 }
 
+void done_playing() {
+    trace("done playing");
+    mvprintw(0, width - 1, " ");
+}
+
+void show_playing() {
+    mvprintw(0, width - 1, ">");
+}
 
 int main(void) {
 
+    trace("started");
     // init stuff
     if (!(win = initscr())) {
         cerr << "initscr() failed\n";
@@ -978,16 +1072,18 @@ int main(void) {
     noecho();
     getmaxyx(win, height, width);
 
+    trace("created window");
+
     signal(SIGINT,  onsignal);
     signal(SIGHUP,  onsignal);
     signal(SIGTERM, onsignal);
 
     controller::init();
+    trace("set up controller");
 
     for (int i = 0; i < 10; ++i) {
         mvprintw(height / 2 - 5 + i, width / 2 - 22, logo[i].c_str());
     }
-
 
     int (*view_func[])(int) = {
         mixer_view,
@@ -1023,11 +1119,15 @@ int main(void) {
     int previous_view = HELP_VIEW;
     int next_view;
     while (view) {
+        trace("switching from view " << previous_view << " to " << view);
         next_view = view_func[view-1](previous_view);
+        trace("next view=" << next_view);
+        controller::stop();
         previous_view = view;
         view = next_view;
     }
 
     cleanup();
+    trace("exiting main function");
 }
 

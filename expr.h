@@ -23,7 +23,7 @@ class expr_context {
         void write(FILE *out) const;
 
         template <typename T, typename ... ARGS>
-        void define(const string &name, T (*func)(ARGS...)) {
+        void func(const string &name, T (*func)(ARGS...)) {
             stringstream line;
             line << "static " << demangle(typeid(T).name()) 
                  << "(*" << name << ")(";
@@ -31,6 +31,20 @@ class expr_context {
             line << ") = (" << demangle(typeid(T).name()) << "(*)(";
             print_types(line, {typeid(ARGS)...});
             line << ")) " << hex << reinterpret_cast<void*>(func) << ";";
+            lines.push_back(line.str());
+        }
+
+        template <typename T>
+        void define(const string &name, T expr) {
+            stringstream line;
+            line << "#define " << name << " (" << expr << ")";
+            lines.push_back(line.str());
+        }
+
+        template <typename T>
+        void var(const string &name, T *ptr) {
+            stringstream line;
+            line << "#define " << name << " (*((" << demangle(typeid(T).name()) << "*) " << reinterpret_cast<void*>(ptr) << "))";
             lines.push_back(line.str());
         }
 

@@ -5,6 +5,10 @@
 #include <iostream>
 #include <vector>
 
+
+#define NUM_INSTRUMENTS 8
+#define NUM_SEQUENCES 16
+
 /*
  * all time units 1/16th note
  */
@@ -50,8 +54,8 @@ istream &operator>>(istream&, instrument&);
 struct project {
     string name {"untitled"};
     int bpm {120};
-    instrument instruments[8];
-    sequence sequences[4];
+    instrument instruments[NUM_INSTRUMENTS];
+    sequence sequences[NUM_SEQUENCES];
 };
 
 ostream &operator<<(ostream&, const project&);

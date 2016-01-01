@@ -48,9 +48,6 @@ namespace synth {
 
 
     int set_note(const evt_note &n) {
-        ofstream debug2("/opt/chippy_files/debug2.txt");
-        debug2 << "bps=" << bps << endl;
-        debug2.flush();
 
         uint32_t note_start_frame = (SAMPLE_FREQUENCY * n.start) / 16 / bps;
         if (frame < note_start_frame) {
@@ -61,9 +58,6 @@ namespace synth {
         if (frame > note_end_frame) {
             return 1;
         }
-
-        debug2 << "start=" << note_start_frame << ", end=" << note_end_frame << endl;
-        debug2.flush();
 
         double note_progress = (frame - note_start_frame) / (note_end_frame - note_start_frame);
         double note_value = (double) n.start_note * (1.0 - note_progress) +
