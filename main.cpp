@@ -7,7 +7,7 @@
 using namespace std;
 #include "project.h"
 #include "controller.h"
-#include "io.h"
+#include "util.h"
 
 #define MIXER_VIEW      1
 #define SEQUENCER_VIEW  2
@@ -27,11 +27,13 @@ string logo[] = {
 };
 
 void onsignal(int);
-void done_playing(void);
-void show_playing(void);
 void cleanup(void);
 void save_and_quit(void);
 void update(void);
+
+void before_playing(void);
+void done_playing(void);
+bool play_until_input(void);
 
 int mixer_view(int);
 int sequencer_view(int);
@@ -72,6 +74,7 @@ uint16_t nl_last[] = {4, 4, 4, 4, 4, 4, 4, 4,
                       4, 4, 4, 4, 4, 4, 4, 4};
 const char note_names[13] = "A BC D EF G ";
 bool quit_now = false;
+bool is_playing = false;
 
 const char note_chars[][4] = {
     "[=]",
@@ -121,9 +124,8 @@ int mixer_view(int previous_view) {
             }
 
             if (i == i_idx) {
-                char selector = controller::playing ? '*' : '\'';
                 for (int j = 0; j < slice_height; ++j) {
-                    mvaddch(y + j, 0, selector);
+                    mvaddch(y + j, 0, '*');
                 }
             }
 
@@ -173,13 +175,9 @@ mixer_view_switch:
             case '7':
             case '8':
                 i_idx = c - 49;
-                trace("changing to instrument " << i_idx);
-                controller::stop();
                 break;
             case 's':
             case 'S':
-                trace("saving");
-                controller::stop();
                 save_project();
                 break;
             case 'e':
@@ -214,7 +212,6 @@ mixer_view_switch:
                     if (controller::instruments[i_idx].enabled) {
                         trace("deleting instrument " << i_idx);
                         controller::remove_instrument(i_idx);
-                        controller::stop();
                         need_save = true;
                     }
                 }
@@ -224,7 +221,6 @@ mixer_view_switch:
                 // volume
                 {
                     trace("changing volume");
-                    controller::stop();
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
@@ -238,7 +234,6 @@ mixer_view_switch:
                 // up 
                 if (i_idx > 0) --i_idx;
                 trace("changing to instrument " << i_idx);
-                controller::stop();
                 break;
             case 'j':
             case 'J':
@@ -250,7 +245,6 @@ mixer_view_switch:
             case 'l':
             case 'L':
                 trace("loading new project");
-                controller::stop();
                 if (need_save && read_yn("save project?")) {
                     if (!save_project())
                         break;
@@ -260,7 +254,6 @@ mixer_view_switch:
             case 'q':
             case 'Q':
                 trace("quitting");
-                controller::stop();
                 if (read_yn("save and quit?")) {
                     save_and_quit();
                 }
@@ -272,36 +265,19 @@ mixer_view_switch:
                 return HELP_VIEW;
             case ' ':
                 // play sequence
-                if (controller::playing) {
-                    trace("toggle play off");
-                    controller::stop();
-                } else {
-                    trace("toggle play sequence on");
-                    show_playing();
-                    controller::play_sequence(s_idx, done_playing);
-                }
+                trace("mixer view: play sequence");
+                before_playing();
+                controller::play_sequence(s_idx, play_until_input);
+                done_playing();
                 break;
             case 'p':
             case 'P':
                 // play note
                 if (controller::instruments[i_idx].enabled) {
-                    trace("play note");
-                    show_playing();
-                    controller::play_note(i_idx, 60, done_playing);
-                    nodelay();
-                    while (controller::playing) {
-                        int v = getch();
-                        // stop playing
-                        if (v != ERR) {
-                            delay();
-                            trace("stop playing note");
-                            controller::stop();
-                            c = v;
-                            goto mixer_view_switch;
-                        }
-
-                        this_thread::sleep_for(chrono::milliseconds(100));
-                    }
+                    trace("mixer view: preview instrument");
+                    before_playing();
+                    controller::play_note(i_idx, 60, play_until_input);
+                    done_playing();
                 }
                 break;
 
@@ -494,7 +470,7 @@ int sequencer_view(int previous_view) {
                     }
 
                     attroff(A_BOLD);
-                    if (selected_idx == i_idx) {
+                    if (selected_idx == note_idx) {
                         // this note is for the currently selected instrument
                         attroff(A_STANDOUT);
                     }
@@ -510,14 +486,13 @@ int sequencer_view(int previous_view) {
 
         update();
 
-        char c = getch();
+        int c = getch();
         while (measure_length >= max(screen_width, 2)) {
             measure_length /= 2;
         }
         switch (c) {
             case '0':
                 trace("change sequence: 0%");
-                controller::stop();
                 print_status("change sequence [1-9]");
                 c = getch();
                 if (c == '1') {
@@ -528,7 +503,6 @@ int sequencer_view(int previous_view) {
                 }
             case '1':
                 trace("change sequence: 1%");
-                controller::stop();
                 print_status("change sequence [10-16] (SPACE selects sequence 1)");
                 c = getch();
                 switch (c) {
@@ -556,7 +530,6 @@ select_sequence_gt2:
             case '8': 
             case '9': 
                 trace("change sequence: 1-9");
-                controller::stop();
                 s_idx = c - 49;
                 break;
             case 's':
@@ -573,6 +546,7 @@ select_sequence_gt2:
                 }
                 break;
             case '[':
+            case KEY_LEFT:
                 if (edit_mode) {
                     // left + 1/16
                     if (cursor_x == 0) {
@@ -617,6 +591,7 @@ select_sequence_gt2:
                 }
                 break;
             case ']':
+            case KEY_RIGHT:
                 if (edit_mode) {
                     // right + 1/16
                     if (cursor_x == right - 1) {
@@ -658,6 +633,7 @@ select_sequence_gt2:
                 }
                 break;
             case 'j':
+            case KEY_DOWN:
                 if (edit_mode) {
                     if (cursor_y > 0) {
                         --cursor_y;
@@ -677,6 +653,7 @@ select_sequence_gt2:
                 }
                 break;
             case 'k':
+            case KEY_UP:
                 if (edit_mode) {
                     if (cursor_y < screen_height - 1) {
                         ++cursor_y;
@@ -786,28 +763,18 @@ select_sequence_gt2:
                 break;
             case ' ':
                 // play sequence
-                if (controller::playing) {
-                    trace("toggle play off");
-                    controller::stop();
-                } else {
-                    trace("toggle sequence on");
-                    show_playing();
-                    controller::play_sequence(s_idx, done_playing);
-                }
+                trace("sequence view: play sequence");
+                before_playing();
+                controller::play_sequence(s_idx, play_until_input);
+                done_playing();
                 break;
             case 'p':
             case 'P':
                 // play note
-                if (controller::playing) {
-                    trace("toggle play off");
-                    controller::stop();
-                } else {
-                    if (controller::instruments[i_idx].enabled) {
-                        trace("toggle note on");
-                        show_playing();
-                        controller::play_note(i_idx, 60, done_playing);
-                    }
-                }
+                trace("sequence view: preview note");
+                before_playing();
+                controller::play_note(i_idx, offset_note + cursor_y, play_until_input);
+                done_playing();
                 break;
         }
     }
@@ -947,14 +914,9 @@ bool read_yn(const string &prompt) {
 
 void clear_screen() {
     clear();
-    if (controller::playing) {
-        show_playing();
-    } 
 }
 
 bool save_project() {
-    trace("stopping");
-    controller::stop();
     while (1) {
         string s_filename = filename;
         if (!has_name) {
@@ -982,8 +944,6 @@ bool save_project() {
 }
 
 bool load_project() {
-    trace("stopping");
-    controller::stop();
     while (1) {
 load_project_begin:
         string l_filename = read_prompt("project name");
@@ -1050,13 +1010,20 @@ void cleanup() {
     refresh();
 }
 
-void done_playing() {
-    trace("done playing");
-    mvprintw(0, width - 1, " ");
+void before_playing() {
+    mvprintw(0, width - 1, ">");
+    nodelay(win, true);
 }
 
-void show_playing() {
-    mvprintw(0, width - 1, ">");
+bool play_until_input() {
+    bool result = getch() == ERR;
+    trace("haz input? " << result);
+    return result;
+}
+
+void done_playing() {
+    mvprintw(0, width - 1, " ");
+    nodelay(win, false);
 }
 
 int main(void) {
@@ -1122,7 +1089,6 @@ int main(void) {
         trace("switching from view " << previous_view << " to " << view);
         next_view = view_func[view-1](previous_view);
         trace("next view=" << next_view);
-        controller::stop();
         previous_view = view;
         view = next_view;
     }

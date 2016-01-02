@@ -1,7 +1,7 @@
 CC		= g++
 CFLAGS	= -std=c++11 -Ofast -c
 LDFLAGS	= -ldl -lcurses
-SRC		= main.cpp controller.cpp project.cpp synth_api.cpp pcm_wrapper.cpp expr.cpp io.cpp
+SRC		= main.cpp controller.cpp project.cpp synth_api.cpp pcm_wrapper.cpp expr.cpp util.cpp
 OBJ		= $(SRC:.cpp=.o)
 UNAME	= $(shell uname -s)
 
@@ -12,7 +12,7 @@ endif
 chippy: $(OBJ)
 	$(CC) $(LDFLAGS) $^ -o $@
 
-wav_test: pcm_wrapper.cpp io.h
+wav_test: pcm_wrapper.cpp util.h
 	$(CC) -DWAV_TEST -std=c++11 $< -o $@
 
 project_debug: project_debug.cpp project.o

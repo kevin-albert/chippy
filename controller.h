@@ -20,10 +20,8 @@ namespace controller {
     void init();
     void destroy();
 
-    void play_note(const int instrument, const int note, void (cb()));
-    void play_sequence(const int sequence, void (cb()));
-    void play(const void (cb()));
-    void stop();
+    void play_note(const int instrument, const int note, bool (condition()));
+    void play_sequence(const int sequence, bool (condition()));
 };
 
 #endif

@@ -1,7 +1,6 @@
 #include <string>
 #include <cmath>
 #include <bitset>
-#include <thread>
 #include <chrono>
 #include <algorithm>
 #include <fstream>
@@ -11,7 +10,7 @@ using namespace std;
 #include "expr.h"
 #include "pcm_wrapper.h"
 #include "synth_api.h"
-#include "io.h"
+#include "util.h"
 
 namespace controller {
     project current_project;
@@ -20,14 +19,6 @@ namespace controller {
     expr<float> expressions[NUM_INSTRUMENTS];
     expr_context ctx;
     int current_step {-1};
-
-    volatile bool playing   {false};
-    volatile bool available {true};
-
-    void play_note_loop(const int instrument, const int note, void (cb()));
-    void play_sequence_loop(const int sequence, void (cb()));
-    void dj_loop(void (cb()));
-    thread audio_thread;
 
     expr<float> default_instrument;
 
@@ -72,43 +63,10 @@ namespace controller {
     }
 
 
-    void stop() {
-        trace("enter");
-        if (!available) {
-            trace("available = false, joining audio_thread");
-            playing = false;
-            audio_thread.join();
-        } 
-        synth::reset_frame();
-        available = true;
-        playing = false;
-        trace("available = true, playing = false");
-    }
-
-    void reset() {
-        trace("enter");
-        stop();
-        available = false;
-        playing = true;
-        trace("available = false, playing = true");
-    }
-
-    void done() {
-        available = true;
-        playing = false;
-        trace("available = true, playing = false");
-    }
-
-    void play_note(const int instrument, const int note, void (cb())) {
+    void play_note(const int instrument, const int note, bool (condition())) {
         trace("resetting...");
-        reset();
-        audio_thread = thread(play_note_loop, instrument, note, cb);
-        trace("started play_note_loop");
-    }
+        synth::reset_frame();
 
-
-    void play_note_loop(const int instrument, const int note, void (cb())) {
-        
         evt_note n;
         n.start = 0;
         n.length = 16 * 4 * 32;
@@ -118,8 +76,7 @@ namespace controller {
         expr<float> &inst = instruments[instrument].enabled ?
             expressions[instrument] : default_instrument;
 
-        while (playing) {
-            trace("generating samples");
+        while (condition()) {
             for (int i = 0; i < BUFFER_LEN; ++i) {
                 if (synth::set_note(n) == 1) {
                     synth::reset_frame();
@@ -130,20 +87,12 @@ namespace controller {
                 audio_buffer[i] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                   (uint8_t) (0x40 + (val+1)*64);
             }
-            trace("writing samples");
             pcm_write();
-            trace("playing = " << playing);
         }
-        
-        trace("exited loop\n");
-
-        cb();
-        done();
-        trace("play_note_loop finished");
     }
 
 
-    bool write_blank_frames(int n, int &ptr) {
+    bool write_blank_frames(int n, int &ptr, bool (condition())) {
         while (n > 0) {
             int end = min(BUFFER_LEN, ptr + n);
             int start = ptr;
@@ -156,7 +105,7 @@ namespace controller {
                 ptr = 0;
             }
             n -= end - start;
-            if (!playing)
+            if (!condition())
                 return false;
                 
         }
@@ -165,14 +114,8 @@ namespace controller {
     }
 
 
-    void play_sequence(const int s_idx, void (cb())) {
-        trace("resetting...");
-        reset();
-        audio_thread = thread(play_sequence_loop, s_idx, cb);
-        trace("started play_sequence_loop");
-    }
-
-    void play_sequence_loop(const int s_idx, void (cb())) {
+    void play_sequence(const int s_idx, bool(condition())) {
+        synth::reset_frame();
         sequence &s = sequences[s_idx];
 
         // iterate through the notes in sorted order
@@ -185,11 +128,12 @@ namespace controller {
         auto last = s.notes.end();
         int ptr = 0;
 
+        trace("playing sequence " << s_idx);
         while (start < last) {
             if (start >= end) {
                 // wait until we have a note
-                if (!write_blank_frames(synth::frames_until(*start), ptr)) {
-                    goto sequence_loop_done;
+                if (!write_blank_frames(synth::frames_until(*start), ptr, condition)) {
+                    return;
                 }
                 end = start + 1;
             }
@@ -235,8 +179,8 @@ namespace controller {
                 audio_buffer[ptr] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                     (uint8_t) (0x40 + (val+1)*64);
                 if (ptr == BUFFER_LEN) {
-                    if (!playing) {
-                        goto sequence_loop_done;
+                    if (!condition()) {
+                        return;
                     }
 
                     pcm_write();
@@ -248,32 +192,25 @@ namespace controller {
             }
         }
 
-        {
-            int sequence_length = min(s.length, s.natural_length);
-            evt_note dummy;
-            dummy.start = sequence_length * s.ts;
-            if (!write_blank_frames(synth::frames_until(dummy), ptr)) {
-                goto sequence_loop_done;
-            }
-            if (ptr > 0) {
-                if (!write_blank_frames(BUFFER_LEN-ptr, ptr)) {
-                    goto sequence_loop_done;
-                }
+        trace("writing some blank frames");
+        int sequence_length = min(s.length, s.natural_length);
+        evt_note dummy;
+        dummy.start = sequence_length * s.ts;
+        if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
+            return;
+        }
+        if (ptr > 0) {
+            if (!write_blank_frames(BUFFER_LEN-ptr, ptr, condition)) {
+                return;
             }
         }
-
-sequence_loop_done:
-        cb();
-        done();
-        trace("play_sequence_loop done");
     }
 
     void eval_with_params(int id, int note, double seconds, int length, float *buffer) {
         if (!instruments[id].enabled) {
             return;
         }
-        
-        reset();
+        synth::reset_frame();
         evt_note n;
         n.start = 0;
         n.length = 16;
@@ -284,12 +221,10 @@ sequence_loop_done:
             synth::set_note(n);
             buffer[i] = expressions[id].eval();
         }
-        done();
     }
 
     void destroy() {
         trace("started destroy()");
-        stop();
         pcm_close();
         trace("controller destroyed");
     }

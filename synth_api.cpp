@@ -4,6 +4,7 @@
 using namespace std;
 #include "synth_api.h"
 #include "pcm_wrapper.h"
+#include "util.h"
 
 namespace synth {
 

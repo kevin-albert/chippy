@@ -4,16 +4,12 @@
 #include <istream>
 #include <ostream>
 #include <fstream>
-#include <mutex>
 
 extern ofstream debug;
-extern mutex debug_mtx;
 
 #define trace(thing) {\
-    debug_mtx.lock();\
     debug << __func__ << "() ["  << __FILE__ << ":" << __LINE__ << "] " << thing << endl;\
     debug.flush();\
-    debug_mtx.unlock();\
 }
 
 const int endian_sample = 1;
