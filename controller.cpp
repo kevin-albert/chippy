@@ -42,6 +42,7 @@ namespace controller {
         ctx.func("sqr_tq",  synth::sqr_tq);
         ctx.func("root",    synth::root);
         ctx.func("scale",   synth::scale);
+        ctx.func("scale1",  synth::scale1);
         ctx.func("mix",     synth::mix);
         ctx.func("env",     synth::env_tq); 
         ctx.func("env_t",   synth::env_t); 
@@ -187,8 +188,8 @@ namespace controller {
                     } 
                 }
 
-                audio_buffer[ptr] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
-                                    (uint8_t) (0x40 + (val+1)*64);
+                audio_buffer[ptr++] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
+                                      (uint8_t) (0x40 + (val+1)*64);
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
                         trace("condition was false");
