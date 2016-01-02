@@ -46,6 +46,7 @@ istream &operator>>(istream &input, sequence &s) {
     if (s.ts == 0) {
         s.ts = 4;
     }
+    s.volume        = read_stream<uint8_t>(input);
     s.length        = read_stream<uint16_t>(input);
     uint16_t size   = read_stream<uint16_t>(input);
     while (size--) {
@@ -59,6 +60,7 @@ istream &operator>>(istream &input, sequence &s) {
 
 ostream &operator<<(ostream &output, const sequence &s) {
     write_stream(output, s.ts);
+    write_stream(output, s.volume);
     write_stream(output, s.length);
     write_stream(output, (uint16_t) s.notes.size());
     for (const evt_note &note: s.notes) {
@@ -96,8 +98,9 @@ void sequence::update_natural_length() {
 
 ostream &operator<<(ostream &output, const project &p) {
     output << "chippy\n"
-           << p.name << "\n"
-           << p.bpm << "\n";
+           << p.name << endl
+           << p.bpm << endl
+           << p.volume << endl;
     for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
         output << p.instruments[i];
     }
@@ -113,7 +116,8 @@ istream &operator>>(istream &input, project &p) {
     if (line != "chippy")           throw invalid_argument("malformed project header");
     if (!getline(input, p.name))    throw invalid_argument("truncated project file");
 
-    input >> p.bpm;
+    input >> p.bpm >> p.volume;
+
     for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
         input >> p.instruments[i];
     }

@@ -75,6 +75,12 @@ namespace synth {
     float scale(const float lower_bound_from, const float upper_bound_from,
                 const float lower_bound_to, const float upper_bound_to,
                 const float value);
+
+    // Translate and scale one range to the range 0, 1
+    // invokes scale(lower_bound_from, upper_bound_from, 0, 1, value)
+    float scale01(const float lower_bound_from, const float upper_bound_from,
+                  const float value);
+
     //
     // Mix values a and b based on the value of x (between 0 and 1)
     // If x is < 0, it is interpreted as 0

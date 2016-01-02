@@ -7,7 +7,7 @@
 
 
 #define NUM_INSTRUMENTS 8
-#define NUM_SEQUENCES 16
+#define NUM_SEQUENCES 15
 
 /*
  * all time units 1/16th note
@@ -29,6 +29,7 @@ istream &operator>>(istream&, evt_note&);
 
 struct sequence {
     uint8_t ts {4};
+    uint8_t volume {50};
     uint16_t length {4};
     uint16_t natural_length {0};
     vector<evt_note> notes;
@@ -54,6 +55,7 @@ istream &operator>>(istream&, instrument&);
 struct project {
     string name {"untitled"};
     int bpm {120};
+    int volume {50};
     instrument instruments[NUM_INSTRUMENTS];
     sequence sequences[NUM_SEQUENCES];
 };

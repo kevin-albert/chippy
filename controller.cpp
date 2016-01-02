@@ -46,7 +46,7 @@ namespace controller {
         ctx.func("env",     synth::env_tq); 
         ctx.func("env_t",   synth::env_t); 
         pcm_open();
-        default_instrument = expr<float>(ctx, "mix(saw(1), sqr(1), nl * 4 + 0.5)");
+        default_instrument = expr<float>(ctx, "mix(saw(1), sqr(1), nl * 4 + 0.25)");
         trace("done");
     }
 
@@ -76,6 +76,10 @@ namespace controller {
         expr<float> &inst = instruments[instrument].enabled ?
             expressions[instrument] : default_instrument;
 
+        float volume = ((float) current_project.volume / 100) *
+                       0.5 *
+                       ((float) instruments[instrument].volume / 100);
+
         while (condition()) {
             for (int i = 0; i < BUFFER_LEN; ++i) {
                 if (synth::set_note(n) == 1) {
@@ -83,7 +87,7 @@ namespace controller {
                 }
                 synth::incr_frame(60);
                 synth::set_note(n);
-                float val = (float) instruments[instrument].volume / 100 * inst.eval();
+                float val = volume * inst.eval();
                 audio_buffer[i] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                   (uint8_t) (0x40 + (val+1)*64);
             }
@@ -127,6 +131,9 @@ namespace controller {
         auto start = s.notes.begin(), end = start;
         auto last = s.notes.end();
         int ptr = 0;
+        
+        float volume = ((float) current_project.volume / 100) *
+                       ((float) sequences[s_idx].volume / 100);
 
         trace("playing sequence " << s_idx);
         while (start < last) {
@@ -169,8 +176,9 @@ namespace controller {
                 for (auto itor = start; itor < end; ++itor) {
                     const evt_note n = *itor;
                     if (synth::set_note(n) == 0) {
-                        val += (float) instruments[n.instrument].volume / 100 * 
-                                       expressions[n.instrument].eval();
+                        val += volume * 
+                               ((float) instruments[n.instrument].volume / 100) * 
+                               expressions[n.instrument].eval();
                     } else {
                         start = itor + 1;
                     } 

@@ -82,7 +82,7 @@ namespace synth {
     }
 
     float saw(const float harmonic) {
-        float x = harmonic * w / 2;
+        float x = harmonic * t * f / 2;
         return 2 * (x - (int) x) - 1;
     }
 
@@ -165,6 +165,11 @@ namespace synth {
                 const float value) {
         return value * (upper_bound_to - lower_bound_to) / (upper_bound_from - lower_bound_from)
                      + lower_bound_to - lower_bound_from;
+    }
+
+    float scale01(const float lower_bound_from, const float upper_bound_from,
+                  const float value) {
+        return scale(lower_bound_from, upper_bound_from, 0, 1, value);
     }
 }
 
