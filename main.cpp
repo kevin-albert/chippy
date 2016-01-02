@@ -65,7 +65,7 @@ bool has_name   {false};
 bool need_save  {false};
 bool edit_mode  {false};
 int offset_time {0};
-int offset_note {60};
+int offset_note {48};
 int s_idx       {0};
 int i_idx       {0};
 int cursor_x    {0};

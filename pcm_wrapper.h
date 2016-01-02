@@ -5,7 +5,7 @@
 #include <cstdlib>
 #ifdef __linux__
   #define SAMPLE_FREQUENCY 48000
-  #define BUFFER_LEN 4800
+  #define BUFFER_LEN 1024
 #else
   #define SAMPLE_FREQUENCY 48000
   #define BUFFER_LEN 100
