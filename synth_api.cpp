@@ -1,5 +1,6 @@
 #include <cmath>
 #include <fstream>
+#include <random>
 
 using namespace std;
 #include "synth_api.h"
@@ -19,6 +20,8 @@ namespace synth {
     double nlq {0};
     double nt {0};
     double ntq {0};
+    default_random_engine rng;
+    uniform_real_distribution<float> dist(-1, 1);
 
     void incr_frame(const int bpm) {
         ++frame;
@@ -90,6 +93,10 @@ namespace synth {
         return sin(harmonic) > 0 ? 1 : -1;
     }
 
+    float noise(const float s) {
+        return scale(0, 1, -s, s, dist(rng)); 
+    }
+
     float sin_t(const float multiplier) {
         return ::sin(t * multiplier * M_PI * 2);
     }
@@ -127,6 +134,10 @@ namespace synth {
         u.x = v;
         u.i = 0x5f3759df - (u.i >> 1);
         return v * u.x * (1.5f - xhalf * u.x * u.x);
+    }
+
+    float pow(const float v, const float p) {
+        return ::pow(v, p);
     }
 
     float env_t(const float attack, const float fade) {

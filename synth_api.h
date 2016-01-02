@@ -46,6 +46,8 @@ namespace synth {
     float sin(const float harmonic);
     float saw(const float harmonic);
     float sqr(const float harmonic);
+    // create noise between -scale and scale
+    float noise(const float scale);
 
     //
     // Oscillate over the current time in seconds * the given multiplier
@@ -69,6 +71,8 @@ namespace synth {
 
     // Take the square root of a value
     float root(const float v);
+    // Raise the given number to a power
+    float pow(const float v, const float p);
 
     // Translate and scale a value from one range to another
     // example: scale(0,1, 2,4, 0.5) -> 3

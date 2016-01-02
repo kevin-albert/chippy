@@ -34,6 +34,7 @@ namespace controller {
         ctx.func("sin",     synth::sin);
         ctx.func("saw",     synth::saw);
         ctx.func("sqr",     synth::sqr);
+        ctx.func("noise",   synth::noise);
         ctx.func("sin_t",   synth::sin_t);
         ctx.func("saw_t",   synth::saw_t);
         ctx.func("sqr_t",   synth::sqr_t);
@@ -41,6 +42,7 @@ namespace controller {
         ctx.func("saw_tq",  synth::saw_tq);
         ctx.func("sqr_tq",  synth::sqr_tq);
         ctx.func("root",    synth::root);
+        ctx.func("pow",     synth::pow);
         ctx.func("scale",   synth::scale);
         ctx.func("scale01", synth::scale01);
         ctx.func("mix",     synth::mix);
