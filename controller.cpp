@@ -43,6 +43,8 @@ namespace controller {
         ctx.func("sqr_tq",  synth::sqr_tq);
         ctx.func("root",    synth::root);
         ctx.func("pow",     synth::pow);
+        ctx.func("min",     synth::min);
+        ctx.func("max",     synth::max);
         ctx.func("scale",   synth::scale);
         ctx.func("scale01", synth::scale01);
         ctx.func("mix",     synth::mix);
