@@ -48,7 +48,6 @@ namespace controller {
         ctx.func("env_t",   synth::env_t); 
         pcm_open();
         default_instrument = expr<float>(ctx, "mix(saw(1), sqr(1), nl * 4 + 0.25)");
-        trace("done");
     }
 
 
@@ -65,7 +64,6 @@ namespace controller {
 
 
     void play_note(const int instrument, const int note, bool (condition())) {
-        trace("resetting...");
         synth::reset_frame();
 
         evt_note n;
@@ -136,12 +134,10 @@ namespace controller {
         float volume = ((float) current_project.volume / 100) *
                        ((float) sequences[s_idx].volume / 100);
 
-        trace("playing sequence " << s_idx);
         while (start < last) {
             if (start >= end) {
                 // wait until we have a note
                 if (!write_blank_frames(synth::frames_until(*start), ptr, condition)) {
-                    trace("write blank frames returned false");
                     return;
                 }
                 end = start + 1;
@@ -166,7 +162,6 @@ namespace controller {
 
             // we're playing the last note
             if (note_time == 0) {
-                trace("playing final note");
                 evt_note sample;
                 const evt_note latest = *(end-1);
                 sample.start = latest.start + latest.length;
@@ -174,7 +169,6 @@ namespace controller {
                 note_time = synth::frames_until(sample);
             }
 
-            trace("writing note values");
             while (start < end) {
                 float val = 0;
                 for (auto itor = start; itor < end; ++itor) {
@@ -192,7 +186,6 @@ namespace controller {
                                       (uint8_t) (0x40 + (val+1)*64);
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
-                        trace("condition was false");
                         return;
                     }
 
@@ -206,7 +199,6 @@ namespace controller {
             }
         }
 
-        trace("writing some blank frames");
         int sequence_length = min(s.length, s.natural_length);
         evt_note dummy;
         dummy.start = sequence_length * s.ts;
@@ -238,9 +230,7 @@ namespace controller {
     }
 
     void destroy() {
-        trace("started destroy()");
         pcm_close();
-        trace("controller destroyed");
     }
 }
 

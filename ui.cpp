@@ -48,7 +48,6 @@ void ui_init() {
     noecho();
     getmaxyx(win, height, width);
 
-    trace("created window");
 }
 
 void print_error(const string &error) {
@@ -217,7 +216,6 @@ void before_playing() {
 
 bool play_until_input() {
     bool result = getch() == ERR;
-    trace("haz input? " << result);
     return result;
 }
 

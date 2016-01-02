@@ -127,7 +127,6 @@ mixer_view_switch:
             case 'D':
                 if (read_yn("delete instrument?")) {
                     if (controller::instruments[i_idx].enabled) {
-                        trace("deleting instrument " << i_idx);
                         controller::remove_instrument(i_idx);
                         need_save = true;
                     }
@@ -137,7 +136,6 @@ mixer_view_switch:
             case 'V':
                 // volume
                 {
-                    trace("changing volume");
                     int volume = read_int("volume [0-100]");
                     if (volume < 0) volume = 0;
                     else if (volume > 100) volume = 100;
@@ -150,18 +148,15 @@ mixer_view_switch:
             case KEY_UP:
                 // up 
                 if (i_idx > 0) --i_idx;
-                trace("changing to instrument " << i_idx);
                 break;
             case 'j':
             case 'J':
             case KEY_DOWN:
                 // down
                 if (i_idx < 7) ++i_idx;
-                trace("changing to instrument " << i_idx);
                 break;
             case 'l':
             case 'L':
-                trace("loading new project");
                 if (need_save && read_yn("save project?")) {
                     if (!save_project())
                         break;
@@ -170,7 +165,6 @@ mixer_view_switch:
                 break;
             case 'q':
             case 'Q':
-                trace("quitting");
                 if (read_yn("save and quit?")) {
                     save_and_quit();
                 }
@@ -182,7 +176,6 @@ mixer_view_switch:
                 return HELP_VIEW;
             case ' ':
                 // play sequence
-                trace("mixer view: play sequence");
                 before_playing();
                 controller::play_sequence(s_idx, play_until_input);
                 done_playing();
@@ -191,7 +184,6 @@ mixer_view_switch:
             case 'P':
                 // play note
                 if (controller::instruments[i_idx].enabled) {
-                    trace("mixer view: preview instrument");
                     before_playing();
                     controller::play_note(i_idx, 60, play_until_input);
                     done_playing();

@@ -213,7 +213,6 @@ int sequencer_view(int previous_view) {
         }
         switch (c) {
             case '0':
-                trace("change sequence: 0%");
                 print_status("change sequence [1-9]");
                 c = getch();
                 if (c == '1') {
@@ -223,7 +222,6 @@ int sequencer_view(int previous_view) {
                     goto select_sequence_gt2;
                 }
             case '1':
-                trace("change sequence: 1%");
                 print_status("change sequence [10-16] (SPACE selects sequence 1)");
                 c = getch();
                 switch (c) {
@@ -250,7 +248,6 @@ select_sequence_gt2:
             case '7': 
             case '8': 
             case '9': 
-                trace("change sequence: 1-9");
                 s_idx = c - 49;
                 break;
             case 's':
@@ -484,7 +481,6 @@ select_sequence_gt2:
                 break;
             case ' ':
                 // play sequence
-                trace("sequence view: play sequence");
                 before_playing();
                 controller::play_sequence(s_idx, play_until_input);
                 done_playing();
@@ -492,7 +488,6 @@ select_sequence_gt2:
             case 'p':
             case 'P':
                 // play note
-                trace("sequence view: preview note");
                 before_playing();
                 controller::play_note(i_idx, offset_note + cursor_y, play_until_input);
                 done_playing();

@@ -77,14 +77,11 @@ int help_view(int previous_view) {
 
 
 void onsignal(int signum) {
-    trace("signal = " << signum << ", quit_now = " << quit_now);
     if (!quit_now) {
         save_and_quit();
     }
 
-    trace("invoking clenup()");
     cleanup();
-    trace("exiting...");
     debug.close();
     exit(0);
 }
@@ -92,7 +89,6 @@ void onsignal(int signum) {
 
 int main(int argc, char **argv) {
 
-    trace("starting");
     controller::init();
     if (argc > 1) {
         filename = argv[1];
@@ -117,7 +113,6 @@ int main(int argc, char **argv) {
     signal(SIGHUP,  onsignal);
     signal(SIGTERM, onsignal);
 
-    trace("set up controller");
 
     for (int i = 0; i < 10; ++i) {
         mvprintw(height / 2 - 5 + i, width / 2 - 22, logo[i].c_str());
@@ -157,14 +152,11 @@ int main(int argc, char **argv) {
     int previous_view = HELP_VIEW;
     int next_view;
     while (view) {
-        trace("switching from view " << previous_view << " to " << view);
         next_view = view_func[view-1](previous_view);
-        trace("next view=" << next_view);
         previous_view = view;
         view = next_view;
     }
 
     cleanup();
-    trace("exiting main function");
 }
 
