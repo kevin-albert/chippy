@@ -140,6 +140,14 @@ namespace synth {
         return ::pow(v, p);
     }
 
+    float min(const float a, const float b) {
+        return a < b ? a : b;
+    }
+
+    float max(const float a, const float b) {
+        return a > b ? a : b;
+    }
+
     float env_t(const float attack, const float fade) {
         float v = 1;
         if (attack > 0 && nt < attack) {

@@ -73,6 +73,10 @@ namespace synth {
     // Raise the given number to a power
     float pow(const float v, const float p);
 
+    // min and max
+    float min(const float a, const float b);
+    float max(const float a, const float b);
+
     // Translate and scale a value from one range to another
     // example: scale(0,1, 2,4, 0.5) -> 3
     float scale(const float lower_bound_from, const float upper_bound_from,
