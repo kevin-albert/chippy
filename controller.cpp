@@ -140,6 +140,7 @@ namespace controller {
             if (start >= end) {
                 // wait until we have a note
                 if (!write_blank_frames(synth::frames_until(*start), ptr, condition)) {
+                    trace("write blank frames returned false");
                     return;
                 }
                 end = start + 1;
@@ -164,6 +165,7 @@ namespace controller {
 
             // we're playing the last note
             if (note_time == 0) {
+                trace("playing final note");
                 evt_note sample;
                 const evt_note latest = *(end-1);
                 sample.start = latest.start + latest.length;
@@ -171,6 +173,7 @@ namespace controller {
                 note_time = synth::frames_until(sample);
             }
 
+            trace("writing note values");
             while (start < end) {
                 float val = 0;
                 for (auto itor = start; itor < end; ++itor) {
@@ -188,12 +191,14 @@ namespace controller {
                                     (uint8_t) (0x40 + (val+1)*64);
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
+                        trace("condition was false");
                         return;
                     }
 
                     pcm_write();
                     ptr = 0;
                 }
+
                 synth::incr_frame(current_project.bpm);
                 if (--note_time < 0)
                     break;
