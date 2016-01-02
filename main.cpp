@@ -93,6 +93,7 @@ void onsignal(int signum) {
 int main(int argc, char **argv) {
 
     trace("starting");
+    controller::init();
     if (argc > 1) {
         filename = argv[1];
         const string project_filename = "/opt/chippy_files/" + filename + ".chip";
@@ -116,7 +117,6 @@ int main(int argc, char **argv) {
     signal(SIGHUP,  onsignal);
     signal(SIGTERM, onsignal);
 
-    controller::init();
     trace("set up controller");
 
     for (int i = 0; i < 10; ++i) {
