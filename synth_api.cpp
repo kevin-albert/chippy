@@ -93,8 +93,8 @@ namespace synth {
         return sin(harmonic) > 0 ? 1 : -1;
     }
 
-    float noise(const float s) {
-        return scale(0, 1, -s, s, dist(rng)); 
+    float noise() {
+        return dist(rng);
     }
 
     float sin_t(const float multiplier) {

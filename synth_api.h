@@ -46,8 +46,7 @@ namespace synth {
     float sin(const float harmonic);
     float saw(const float harmonic);
     float sqr(const float harmonic);
-    // create noise between -scale and scale
-    float noise(const float scale);
+    float noise();
 
     //
     // Oscillate over the current time in seconds * the given multiplier
