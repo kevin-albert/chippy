@@ -134,15 +134,16 @@ namespace controller {
         s.sort();
         const int bpm = current_project.bpm;
         synth::incr_frame(bpm);
-        
-        // range of notes being played
-        auto start = s.notes.begin(), end = start;
-        auto last = s.notes.end();
-        int ptr = 0;
-        
         float volume = (float) current_project.volume / 100;
-
+        
         while (condition()) {
+            
+            // range of notes being played
+            auto start = s.notes.begin(), end = start;
+            auto last = s.notes.end();
+            int ptr = 0;
+        
+
             while (start < last) {
                 if (start >= end) {
                     // wait until we have a note
