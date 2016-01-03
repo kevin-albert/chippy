@@ -10,8 +10,6 @@
   static int err;
 #else
   #include <fstream>
-  #include <thread>
-  #include <chrono>
   using namespace std;
   static ofstream pcm_out("/opt/chippy_files/pcm_out.txt");
 #endif
@@ -109,7 +107,7 @@ void pcm_write() {
     while (1) {
         snd_pcm_sframes_t frames = snd_pcm_writei(handle, buffer, BUFFER_LEN);
         if (frames < 0) {
-            frames = snd_pcm_recover(handle, frames, 0);
+            frames = snd_pcm_recover(handle, frames, 1);
             if (frames < 0) {
                 throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
             }
@@ -135,7 +133,6 @@ void pcm_write() {
         pcm_out << 'o' << endl;
     }
 
-    this_thread::sleep_for(chrono::milliseconds(100));
     */
 
 #endif

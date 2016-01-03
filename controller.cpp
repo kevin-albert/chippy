@@ -19,6 +19,7 @@ namespace controller {
     expr<float> expressions[NUM_INSTRUMENTS];
     expr_context ctx;
     int current_step {-1};
+    uint8_t last_sample {128};
 
     expr<float> default_instrument;
 
@@ -104,7 +105,8 @@ namespace controller {
             int end = min(BUFFER_LEN, ptr + n);
             int start = ptr;
             while (ptr < end) {
-                audio_buffer[ptr++] = 0x40;
+                last_sample += (128 - last_sample * 1.5) / 15;
+                audio_buffer[ptr++] = last_sample;
                 synth::incr_frame(current_project.bpm);
             }
             if (ptr == BUFFER_LEN) {
@@ -175,7 +177,6 @@ namespace controller {
 
             while (start < end) {
                 float val = 0;
-                /*
                 for (auto itor = start; itor < end; ++itor) {
                     const evt_note n = *itor;
                     if (synth::set_note(n) == 0) {
@@ -186,7 +187,6 @@ namespace controller {
                         start = itor + 1;
                     } 
                 }
-                */
 
                 audio_buffer[ptr++] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                       (uint8_t) (0x40 + (val+1)*64);
