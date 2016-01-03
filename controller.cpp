@@ -135,14 +135,13 @@ namespace controller {
         const int bpm = current_project.bpm;
         synth::incr_frame(bpm);
         float volume = (float) current_project.volume / 100;
+        int ptr = 0;
         
         while (condition()) {
             
             // range of notes being played
             auto start = s.notes.begin(), end = start;
             auto last = s.notes.end();
-            int ptr = 0;
-        
 
             while (start < last) {
                 if (start >= end) {
