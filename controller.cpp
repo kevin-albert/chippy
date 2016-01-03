@@ -175,6 +175,7 @@ namespace controller {
 
             while (start < end) {
                 float val = 0;
+                /*
                 for (auto itor = start; itor < end; ++itor) {
                     const evt_note n = *itor;
                     if (synth::set_note(n) == 0) {
@@ -185,6 +186,7 @@ namespace controller {
                         start = itor + 1;
                     } 
                 }
+                */
 
                 audio_buffer[ptr++] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
                                       (uint8_t) (0x40 + (val+1)*64);
