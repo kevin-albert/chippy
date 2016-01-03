@@ -173,9 +173,10 @@ load_project_begin:
             need_save = false;
             has_name = true;
             for (int i = 0; i < NUM_INSTRUMENTS; ++i) {
-                controller::remove_instrument(i);
                 if (controller::instruments[i].enabled) {
                     controller::setup_instrument(i, controller::instruments[i].value);
+                } else {
+                    controller::remove_instrument(i);
                 }
             }
             return true;
