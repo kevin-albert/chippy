@@ -77,6 +77,7 @@ namespace controller {
                 uint8_t val = (last_sample + d) * 0.97;
                 audio_buffer[ptr++] = val;
                 last_sample = val;
+                d = val - last_sample;
                 synth::incr_frame(current_project.bpm);
             }
             if (ptr == BUFFER_LEN) {
