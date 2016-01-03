@@ -24,7 +24,7 @@ namespace controller {
     expr<float> default_instrument;
 
     inline uint8_t f2u8(float value) {
-        return value > 1 ? 0xff : value < 0 ? 9 : 0x80 + value * 0x80;
+        return value > 1 ? 0xff : value < 0 ? 0 : 128 + value * 127;
     }
 
     void init() {
@@ -184,15 +184,14 @@ namespace controller {
                 for (auto itor = start; itor < end; ++itor) {
                     const evt_note n = *itor;
                     if (synth::set_note(n) == 0) {
-                        val += volume * 
-                               ((float) instruments[n.instrument].volume / 100) * 
+                        val += ((float) instruments[n.instrument].volume / 100) * 
                                expressions[n.instrument].eval();
                     } else {
                         start = itor + 1;
                     } 
                 }
 
-                audio_buffer[ptr++] = last_sample = f2u8(val); 
+                audio_buffer[ptr++] = last_sample = f2u8(volume * val); 
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
                         goto play_sequence_done;
