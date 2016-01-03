@@ -20,6 +20,7 @@ namespace controller {
     expr_context ctx;
     int current_step {-1};
     uint8_t last_sample {128};
+    uint8_t d {0};
 
     expr<float> default_instrument;
 
@@ -68,6 +69,30 @@ namespace controller {
     }
 
 
+    bool write_blank_frames(int n, int &ptr, bool (condition())) {
+        while (n > 0) {
+            int end = min(BUFFER_LEN, ptr + n);
+            int start = ptr;
+            while (ptr < end) {
+                uint8_t val = (last_sample + d) * 0.97;
+                audio_buffer[ptr++] = val;
+                last_sample = val;
+                synth::incr_frame(current_project.bpm);
+            }
+            if (ptr == BUFFER_LEN) {
+                pcm_write();
+                ptr = 0;
+            }
+            n -= end - start;
+            if (!condition())
+                return false;
+                
+        }
+
+        return true;
+    }
+
+
     void play_note(const int instrument, const int note, bool (condition())) {
         synth::reset_frame();
 
@@ -92,34 +117,17 @@ namespace controller {
                 synth::incr_frame(60);
                 synth::set_note(n);
                 float val = volume * inst.eval();
-                audio_buffer[i] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
-                                  (uint8_t) (0x40 + (val+1)*64);
+                uint8_t sample_value = val > 1 ? 0x80 : val < -1 ? 0x0 : 
+                                       (uint8_t) (0x40 + (val+1)*64);
+                d = sample_value - last_sample;
+                last_sample = sample_value;
+                audio_buffer[i] = sample_value;
             }
             pcm_write();
         }
-    }
 
-
-    bool write_blank_frames(int n, int &ptr, bool (condition())) {
-        while (n > 0) {
-            int end = min(BUFFER_LEN, ptr + n);
-            int start = ptr;
-            while (ptr < end) {
-                last_sample += (128 - last_sample * 1.5) / 15;
-                audio_buffer[ptr++] = last_sample;
-                synth::incr_frame(current_project.bpm);
-            }
-            if (ptr == BUFFER_LEN) {
-                pcm_write();
-                ptr = 0;
-            }
-            n -= end - start;
-            if (!condition())
-                return false;
-                
-        }
-
-        return true;
+        int ptr;
+        write_blank_frames(BUFFER_LEN, ptr, condition);
     }
 
 
@@ -188,11 +196,14 @@ namespace controller {
                     } 
                 }
 
-                audio_buffer[ptr++] = val > 1 ? 0x80 : val < -1 ? 0x0 : 
-                                      (uint8_t) (0x40 + (val+1)*64);
+                uint8_t sample_value = val > 1 ? 0x80 : val < -1 ? 0x0 : 
+                                       (uint8_t) (0x40 + (val+1)*64);
+                d = sample_value - last_sample;
+                last_sample = sample_value;
+                audio_buffer[ptr++] = sample_value;
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
-                        return;
+                        goto play_sequence_done;
                     }
 
                     pcm_write();
@@ -205,17 +216,17 @@ namespace controller {
             }
         }
 
-        int sequence_length = min(s.length, s.natural_length);
-        evt_note dummy;
-        dummy.start = sequence_length * s.ts;
-        if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
-            return;
-        }
-        if (ptr > 0) {
-            if (!write_blank_frames(BUFFER_LEN-ptr, ptr, condition)) {
+        {
+            int sequence_length = min(s.length, s.natural_length);
+            evt_note dummy;
+            dummy.start = sequence_length * s.ts;
+            if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
                 return;
             }
         }
+
+play_sequence_done:
+        write_blank_frames(BUFFER_LEN-ptr, ptr, condition);
     }
 
     void eval_with_params(int id, int note, double seconds, int length, float *buffer) {
