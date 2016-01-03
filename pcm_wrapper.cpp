@@ -80,7 +80,7 @@ void pcm_open(void) {
                                   1,
                                   SAMPLE_FREQUENCY,
                                   1,
-                                  500000)) < 0) {   
+                                  1000000)) < 0) {   
         throw runtime_error("unable to set PCM params: " + string(snd_strerror(err)));
     }
 #endif
