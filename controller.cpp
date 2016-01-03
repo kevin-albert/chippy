@@ -24,7 +24,7 @@ namespace controller {
     expr<float> default_instrument;
 
     inline uint8_t f2u8(float value) {
-        return value > 1 ? 0 : value < 0xff : 0x80 + value * 0x80;
+        return value > 1 ? 0xff : value < 0 ? 9 : 0x80 + value * 0x80;
     }
 
     void init() {
