@@ -19,10 +19,13 @@ namespace controller {
     expr<float> expressions[NUM_INSTRUMENTS];
     expr_context ctx;
     int current_step {-1};
-    uint8_t last_sample {128};
-    uint8_t d {0};
+    uint8_t last_sample {0x80};
 
     expr<float> default_instrument;
+
+    inline uint8_t f2u8(float value) {
+        return value > 1 ? 0 : value < 0xff : 0x80 + value * 0x80;
+    }
 
     void init() {
         ctx.var("t",       &synth::t);
@@ -53,7 +56,7 @@ namespace controller {
         ctx.func("env",     synth::env_tq); 
         ctx.func("env_t",   synth::env_t); 
         pcm_open();
-        default_instrument = expr<float>(ctx, "mix(saw(1), sqr(1), nl * 4 + 0.25)");
+        default_instrument = expr<float>(ctx, "mix(sin(1), sqr(2), 1.0 / (nl * 4 + 1))");
     }
 
 
@@ -74,10 +77,7 @@ namespace controller {
             int end = min(BUFFER_LEN, ptr + n);
             int start = ptr;
             while (ptr < end) {
-                uint8_t val = (last_sample + d) * 0.97;
-                audio_buffer[ptr++] = val;
-                last_sample = val;
-                d = val - last_sample;
+                audio_buffer[ptr++] = last_sample;
                 synth::incr_frame(current_project.bpm);
             }
             if (ptr == BUFFER_LEN) {
@@ -117,12 +117,7 @@ namespace controller {
                 }
                 synth::incr_frame(60);
                 synth::set_note(n);
-                float val = volume * inst.eval();
-                uint8_t sample_value = val > 1 ? 0x80 : val < -1 ? 0x0 : 
-                                       (uint8_t) (0x40 + (val+1)*64);
-                d = sample_value - last_sample;
-                last_sample = sample_value;
-                audio_buffer[i] = sample_value;
+                audio_buffer[i] = last_sample = f2u8(volume * inst.eval());
             }
             pcm_write();
         }
@@ -197,11 +192,7 @@ namespace controller {
                     } 
                 }
 
-                uint8_t sample_value = val > 1 ? 0x80 : val < -1 ? 0x0 : 
-                                       (uint8_t) (0x40 + (val+1)*64);
-                d = sample_value - last_sample;
-                last_sample = sample_value;
-                audio_buffer[ptr++] = sample_value;
+                audio_buffer[ptr++] = last_sample = f2u8(val); 
                 if (ptr == BUFFER_LEN) {
                     if (!condition()) {
                         goto play_sequence_done;
