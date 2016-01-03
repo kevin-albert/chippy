@@ -107,7 +107,7 @@ void pcm_write() {
     while (1) {
         snd_pcm_sframes_t frames = snd_pcm_writei(handle, buffer, BUFFER_LEN);
         if (frames < 0) {
-            frames = snd_pcm_recover(handle, frames, 1);
+            frames = snd_pcm_recover(handle, frames, 0);
             if (frames < 0) {
                 throw runtime_error("unable to write PCM data: " + string(snd_strerror(frames)));
             }
