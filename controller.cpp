@@ -208,9 +208,8 @@ namespace controller {
             }
 
             {
-                int sequence_length = min(s.length, s.natural_length);
                 evt_note dummy;
-                dummy.start = sequence_length * s.ts;
+                dummy.start = s.length * s.ts;
                 if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
                     return;
                 }
