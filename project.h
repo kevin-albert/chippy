@@ -29,7 +29,6 @@ istream &operator>>(istream&, evt_note&);
 
 struct sequence {
     uint8_t ts {4};
-    uint8_t volume {50};
     uint16_t length {4};
     uint16_t natural_length {0};
     vector<evt_note> notes;

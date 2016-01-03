@@ -107,7 +107,6 @@ namespace controller {
             expressions[instrument] : default_instrument;
 
         float volume = ((float) current_project.volume / 100) *
-                       0.5 *
                        ((float) instruments[instrument].volume / 100);
 
         while (condition()) {
@@ -141,78 +140,79 @@ namespace controller {
         auto last = s.notes.end();
         int ptr = 0;
         
-        float volume = ((float) current_project.volume / 100) *
-                       ((float) sequences[s_idx].volume / 100);
+        float volume = (float) current_project.volume / 100;
 
-        while (start < last) {
-            if (start >= end) {
-                // wait until we have a note
-                if (!write_blank_frames(synth::frames_until(*start), ptr, condition)) {
+        while (condition()) {
+            while (start < last) {
+                if (start >= end) {
+                    // wait until we have a note
+                    if (!write_blank_frames(synth::frames_until(*start), ptr, condition)) {
+                        return;
+                    }
+                    end = start + 1;
+                }
+
+                // find all other notes playing at this time
+                int note_time = 0;
+                if (end != last) {
+                    while (note_time == 0) {
+                        note_time = synth::frames_until(*end);
+                        if (note_time == 0) {
+                            if (++end >= last)
+                                break;
+                        }
+                    }
+                }
+
+                // sort the current range according to note end
+                sort(start, end, [](const evt_note &n1, const evt_note &n2) { 
+                    return n1.start + n1.length < n2.start + n2.length; 
+                });
+
+                // we're playing the last note
+                if (note_time == 0) {
+                    evt_note sample;
+                    const evt_note latest = *(end-1);
+                    sample.start = latest.start + latest.length;
+                    sample.length = 0;
+                    note_time = synth::frames_until(sample);
+                }
+
+                while (start < end) {
+                    float val = 0;
+                    for (auto itor = start; itor < end; ++itor) {
+                        const evt_note n = *itor;
+                        if (synth::set_note(n) == 0) {
+                            val += ((float) instruments[n.instrument].volume / 100) * 
+                                   expressions[n.instrument].eval();
+                        } else {
+                            start = itor + 1;
+                        } 
+                    }
+
+                    audio_buffer[ptr++] = last_sample = f2u8(volume * val); 
+                    if (ptr == BUFFER_LEN) {
+                        if (!condition()) {
+                            goto play_sequence_done;
+                        }
+
+                        pcm_write();
+                        ptr = 0;
+                    }
+
+                    synth::incr_frame(current_project.bpm);
+                    if (--note_time < 0)
+                        break;
+                }
+            }
+
+            {
+                int sequence_length = min(s.length, s.natural_length);
+                evt_note dummy;
+                dummy.start = sequence_length * s.ts;
+                if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
                     return;
                 }
-                end = start + 1;
-            }
-
-            // find all other notes playing at this time
-            int note_time = 0;
-            if (end != last) {
-                while (note_time == 0) {
-                    note_time = synth::frames_until(*end);
-                    if (note_time == 0) {
-                        if (++end >= last)
-                            break;
-                    }
-                }
-            }
-
-            // sort the current range according to note end
-            sort(start, end, [](const evt_note &n1, const evt_note &n2) { 
-                return n1.start + n1.length < n2.start + n2.length; 
-            });
-
-            // we're playing the last note
-            if (note_time == 0) {
-                evt_note sample;
-                const evt_note latest = *(end-1);
-                sample.start = latest.start + latest.length;
-                sample.length = 0;
-                note_time = synth::frames_until(sample);
-            }
-
-            while (start < end) {
-                float val = 0;
-                for (auto itor = start; itor < end; ++itor) {
-                    const evt_note n = *itor;
-                    if (synth::set_note(n) == 0) {
-                        val += ((float) instruments[n.instrument].volume / 100) * 
-                               expressions[n.instrument].eval();
-                    } else {
-                        start = itor + 1;
-                    } 
-                }
-
-                audio_buffer[ptr++] = last_sample = f2u8(volume * val); 
-                if (ptr == BUFFER_LEN) {
-                    if (!condition()) {
-                        goto play_sequence_done;
-                    }
-
-                    pcm_write();
-                    ptr = 0;
-                }
-
-                synth::incr_frame(current_project.bpm);
-                if (--note_time < 0)
-                    break;
-            }
-        }
-
-        {
-            int sequence_length = min(s.length, s.natural_length);
-            evt_note dummy;
-            dummy.start = sequence_length * s.ts;
-            if (!write_blank_frames(synth::frames_until(dummy), ptr, condition)) {
-                return;
             }
         }
 

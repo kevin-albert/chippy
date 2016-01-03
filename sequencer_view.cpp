@@ -51,7 +51,7 @@ int sequencer_view(int previous_view) {
         }
 
         mvaddch(1, 64, ']');
-        mvprintw(1, 46 + 4 * NUM_SEQUENCES, "project volume: [%d] | sequence volume: [%d]", controller::current_project.volume, controller::sequences[s_idx].volume);
+        mvprintw(1, 46 + 4 * NUM_SEQUENCES, "master volume: [%d]", controller::current_project.volume);
         // top bar
         for (int i = offset_time ? 0 : 3; i < width; ++i) {
             mvaddch(3, i, '-');
@@ -493,23 +493,16 @@ select_sequence_gt2:
                 done_playing();
                 break;
             case 'v':
-                // volume
-                {
-                    int volume = read_int("sequence volume [0-100]");
-                    if (volume < 0) volume = 0;
-                    else if (volume > 100) volume = 100;
-                    controller::sequences[s_idx].volume = volume;
-                    need_save = true;
-                } 
-                break;
             case 'V':
                 {
                     int volume = read_int("project volume [0-100]");
-                    if (volume < 0) volume = 0;
-                    else if (volume > 100) volume = 100;
-                    controller::current_project.volume = volume;
-                    need_save = true;
+                    if (volume > 0) {
+                        if (volume > 100) volume = 100;
+                        controller::current_project.volume = volume;
+                        need_save = true;
+                    }
                 }
+                break;
         }
     }
     

@@ -46,7 +46,6 @@ istream &operator>>(istream &input, sequence &s) {
     if (s.ts == 0) {
         s.ts = 4;
     }
-    s.volume        = read_stream<uint8_t>(input);
     s.length        = read_stream<uint16_t>(input);
     uint16_t size   = read_stream<uint16_t>(input);
     while (size--) {
@@ -60,7 +59,6 @@ istream &operator>>(istream &input, sequence &s) {
 
 ostream &operator<<(ostream &output, const sequence &s) {
     write_stream(output, s.ts);
-    write_stream(output, s.volume);
     write_stream(output, s.length);
     write_stream(output, (uint16_t) s.notes.size());
     for (const evt_note &note: s.notes) {
