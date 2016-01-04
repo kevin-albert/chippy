@@ -15,6 +15,7 @@ $(EXE): $(OBJ)
 	$(CC) $(LDFLAGS) $^ -o $@
 
 install: $(EXE)
+	mkdir -p /opt/chippy_files
 	cp chippy /usr/local/bin
 
 wav_test: pcm_wrapper.cpp util.h
