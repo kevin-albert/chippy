@@ -18,7 +18,7 @@ int mixer_view(int previous_view) {
                 has_name ? filename.c_str() : "[new file]",
                 need_save ? "*" : " ");
 
-        mvprintw(1, 0, "project volume: [%d] | sequence volume: [%d]", controller::current_project.volume, controller::sequences[s_idx].volume);
+        mvprintw(1, 0, "project volume: [%d]", controller::current_project.volume);
 
         float buffer[width];
         int i_start = i_idx / 4;
