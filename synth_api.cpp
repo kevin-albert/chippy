@@ -64,8 +64,7 @@ namespace synth {
         }
 
         double note_progress = (double) (frame - note_start_frame) / (note_end_frame - note_start_frame);
-        double note_value = (double) n.start_note * (1.0 - note_progress) +
-                            (double) n.end_note * note_progress;
+        double note_value = (double) n.start_note + (double) (n.end_note-n.start_note) * note_progress;
 
         if (note_value < 1) note_value = 1;
 
