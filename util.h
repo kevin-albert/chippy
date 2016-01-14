@@ -4,13 +4,20 @@
 #include <istream>
 #include <ostream>
 #include <fstream>
+#include <mutex>
 
 extern ofstream debug;
+extern mutex debug_mutex;
 
+/*
 #define trace(thing) {\
+    unique_lock<mutex> lock(debug_mutex);\
     debug << __func__ << "() ["  << __FILE__ << ":" << __LINE__ << "] " << thing << endl;\
     debug.flush();\
-}
+    lock.unlock();\
+}*/
+
+#define trace(x)
 
 const int endian_sample = 1;
 #define is_big_endian() ((*(char*)&endian_sample)==0)

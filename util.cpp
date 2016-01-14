@@ -4,4 +4,5 @@ using namespace std;
 #include "util.h"
 
 ofstream debug("/opt/chippy_files/debug.out");
+mutex debug_mutex;
 

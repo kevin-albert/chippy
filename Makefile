@@ -9,6 +9,9 @@ EXE		= chippy
 
 ifeq	($(UNAME),Linux)
 	LDFLAGS += -lasound
+else
+	LDFLAGS += -L/usr/local/lib -lportaudio
+	CFLAGS += -I/usr/local/include
 endif
 
 $(EXE): $(OBJ)

@@ -70,9 +70,7 @@ int help_view(int previous_view) {
         save_and_quit();
     }
 
-    if (previous_view == HELP_VIEW) 
-        previous_view = MIXER_VIEW;
-    return previous_view;
+    return previous_view == HELP_VIEW ? MIXER_VIEW : previous_view;
 }
 
 

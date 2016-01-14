@@ -9,6 +9,10 @@
 #define NUM_INSTRUMENTS 8
 #define NUM_SEQUENCES 15
 
+#define PAN_LEFT ((uint8_t) 0x00)
+#define PAN_RIGHT ((uint8_t) 0xff)
+#define PAN_CENTER ((uint8_t) 0x80)
+
 /*
  * all time units 1/16th note
  */
@@ -22,6 +26,7 @@ struct evt_note {
     uint8_t start_vel;
     uint8_t end_note;
     uint8_t end_vel;
+    uint8_t pan {PAN_CENTER};
 };
 
 ostream &operator<<(ostream&, const evt_note&);

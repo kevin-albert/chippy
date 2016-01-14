@@ -1,6 +1,11 @@
 #include <iostream>
 #include <string>
 
+using namespace std;
+
+#include "pcm_wrapper.h"
+#include "util.h"
+
 #ifdef __linux__
   #include <alsa/asoundlib.h>
   #include <alsa/pcm.h>
@@ -9,17 +14,30 @@
   static snd_pcm_t *handle;
   static int err;
 #else
-  #include <fstream>
-  using namespace std;
-  static ofstream pcm_out("/opt/chippy_files/pcm_out.txt");
+  #include <mutex>
+  #include <condition_variable>
+  #include <portaudio.h>
+  PaStreamParameters pa_params;
+  mutex mtx;
+  mutex callback_mtx;
+  condition_variable is_done;
+  bool playing {false};
+  struct pa_data_loader {
+      pa_data_loader(bool (get_data(SAMPLE*, uint32_t))):
+          get_data(get_data) {}
+      bool (*get_data)(SAMPLE*, uint32_t);
+  };
+  #define pa_call(func) {\
+    PaError err = func;\
+    if (err != paNoError) {\
+        string msg = Pa_GetErrorText(err);\
+        throw new runtime_error(msg);\
+    }\
+  }
 #endif
 
-using namespace std;
-#include "pcm_wrapper.h"
-#include "util.h"
 
-
-uint8_t audio_buffer[BUFFER_LEN];
+//SAMPLE audio_buffer[BUFFER_LEN];
 
 #ifdef __linux__
 static void xrun_recovery() {
@@ -66,6 +84,40 @@ static void wait_for_poll(struct pollfd *ufds, int fdcount) {
     }
 }
 
+#else
+
+
+int pa_callback(const void *input_buffer, void *output_buffer, unsigned long frames_per_buffer,
+                const PaStreamCallbackTimeInfo *time_info, PaStreamCallbackFlags status_flags,
+                void *user_data) {
+    trace("");
+    (void) time_info;
+    (void) status_flags;
+    (void) input_buffer;
+    SAMPLE *out = (SAMPLE*) output_buffer;
+
+    trace(reinterpret_cast<void*>((((pa_data_loader*) user_data)->get_data)));
+    if (((pa_data_loader*) user_data)->get_data(out, frames_per_buffer)) {
+        trace("return paContinue");
+        return paContinue;
+    } else {
+        trace("return paComplete");
+        return paComplete;
+    }
+}
+
+
+void pa_finished(void *user_data) {
+    trace("");
+    (void) user_data;
+    playing = false;
+    is_done.notify_one();
+}
+
+bool pa_done_playing() {
+    return !playing;
+}
+
 #endif
 
 void pcm_open(void) {
@@ -83,8 +135,50 @@ void pcm_open(void) {
                                   1000000)) < 0) {   
         throw runtime_error("unable to set PCM params: " + string(snd_strerror(err)));
     }
+#else
+    trace("initializing");
+    pa_call(Pa_Initialize());
+    pa_params.device = Pa_GetDefaultOutputDevice(); 
+    if (pa_params.device == paNoDevice) {
+        throw runtime_error("no default output device");
+    }
+    pa_params.channelCount = 2;
+    pa_params.sampleFormat = paFloat32;//paUInt8;
+    pa_params.suggestedLatency = Pa_GetDeviceInfo(pa_params.device)->defaultLowOutputLatency;
+    pa_params.hostApiSpecificStreamInfo = nullptr;
+    trace("done");
 #endif
 }
+
+#ifndef __linux__
+void pcm_play(bool (get_data(SAMPLE*, uint32_t))) {
+
+    trace("opening stream");
+    trace(reinterpret_cast<void*>(get_data));
+    pa_data_loader dl(get_data);
+    PaStream *stream;
+    pa_call(Pa_OpenStream(
+            &stream,
+            nullptr,
+            &pa_params,
+            SAMPLE_FREQUENCY,
+            BUFFER_LEN,
+            paClipOff,
+            pa_callback,
+            &dl));
+
+    trace("playing");
+    playing = true;
+    pa_call(Pa_SetStreamFinishedCallback(stream, &pa_finished));
+    pa_call(Pa_StartStream(stream));
+    unique_lock<mutex> lock(mtx);
+    trace("waiting");
+    is_done.wait(lock, pa_done_playing);
+    trace("done");
+    pa_call(Pa_StopStream(stream));
+    pa_call(Pa_CloseStream(stream));
+}
+#endif
 
 
 static bool need_poll = false;
@@ -142,7 +236,7 @@ void pcm_close() {
 #ifdef __linux__
     snd_pcm_close(handle);
 #else
-    pcm_out.close();
+    Pa_Terminate();
 #endif
 }
 

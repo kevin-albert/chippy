@@ -19,13 +19,15 @@ namespace controller {
     expr<float> expressions[NUM_INSTRUMENTS];
     expr_context ctx;
     int current_step {-1};
-    uint8_t last_sample {0x80};
+    SAMPLE last_sample {GROUND};
 
     expr<float> default_instrument;
 
+    /*
     inline uint8_t f2u8(float value) {
         return value > 1 ? 0xff : value < -1 ? 0 : 128 + value * 127;
     }
+    */
 
     void init() {
         ctx.var("t",       &synth::t);
@@ -72,61 +74,104 @@ namespace controller {
     }
 
 
-    bool write_blank_frames(int n, int &ptr, bool (condition())) {
-        while (n > 0) {
-            int end = min(BUFFER_LEN, ptr + n);
-            int start = ptr;
-            while (ptr < end) {
-                audio_buffer[ptr++] = last_sample;
-                synth::incr_frame(current_project.bpm);
-            }
-            if (ptr == BUFFER_LEN) {
-                pcm_write();
-                ptr = 0;
-            }
-            n -= end - start;
-            if (!condition())
+    namespace note_player {
+        evt_note n;
+        expr<float> *inst;
+        float volume;
+        float pan;
+        bool (*condition)();
+
+        bool get_note_data(SAMPLE *buffer, uint32_t buffer_len) {
+            if (condition()) {
+                for (int i = 0; i < buffer_len; ++i) {
+                    if (synth::set_note(n) == 1) {
+                        synth::reset_frame();
+                    }
+                    synth::incr_frame(60);
+                    synth::set_note(n);
+                    float value = volume * inst->eval();
+
+                    *buffer++ = value * (1.0f - pan);
+                    *buffer++ = value * pan;
+                }
+                return true;
+            } else {
+                trace("done");
                 return false;
-                
+            }
         }
 
-        return true;
-    }
+        void go(const int instrument, const int note, bool (condition())) {
+            synth::reset_frame();
+            note_player::condition = condition;
 
+            n.start = 0;
+            n.length = 16 * 4 * 32;
+            n.start_note = n.end_note = note;
+            n.start_vel = n.end_vel = 100;
+            pan = (float) (PAN_RIGHT - n.pan) / 0xff;
+            trace("pan left: " << (1.0f - pan));
+            trace("pan right: " << (pan));
+
+            inst = instruments[instrument].enabled ?
+                   &expressions[instrument] : &default_instrument;
+
+            volume = ((float) current_project.volume / 100) *
+                     ((float) instruments[instrument].volume / 100);
+
+            trace("data function: " << reinterpret_cast<void*>(get_note_data));
+            pcm_play(get_note_data);
+        }
+    };
 
     void play_note(const int instrument, const int note, bool (condition())) {
-        synth::reset_frame();
-
-        evt_note n;
-        n.start = 0;
-        n.length = 16 * 4 * 32;
-        n.start_note = n.end_note = note;
-        n.start_vel = n.end_vel = 100;
-
-        expr<float> &inst = instruments[instrument].enabled ?
-            expressions[instrument] : default_instrument;
-
-        float volume = ((float) current_project.volume / 100) *
-                       ((float) instruments[instrument].volume / 100);
-
-        while (condition()) {
-            for (int i = 0; i < BUFFER_LEN; ++i) {
-                if (synth::set_note(n) == 1) {
-                    synth::reset_frame();
-                }
-                synth::incr_frame(60);
-                synth::set_note(n);
-                audio_buffer[i] = last_sample = f2u8(volume * inst.eval());
-            }
-            pcm_write();
-        }
-
-        int ptr;
-        write_blank_frames(BUFFER_LEN, ptr, condition);
+        note_player::go(instrument, note, condition); 
     }
 
 
+    namespace sequence_player {
+        sequence *s;
+        int bpm;
+        float volume;
+        vector<evt_note>::iterator start;
+        vector<evt_note>::iterator end;
+        vector<evt_note>::iterator last;
+        bool (*condition)();
+
+
+        bool get_data(SAMPLE *buffer, uint32_t buffer_len) {
+            int ptr = 0;
+
+            if (start >= last) {
+                s->sort();
+                start = s->notes.begin(), end = start;
+                last = s->notes.end();
+            }
+            
+            // get the notes that belong to this buffer
+            // play them
+
+            return false;
+        }
+
+        void go(const int s_idx, bool(condition())) {
+
+            synth::reset_frame();
+            sequence_player::condition = condition;
+            s = &sequences[s_idx];
+
+            bpm = current_project.bpm;
+            volume = (float) current_project.volume / 100;
+
+            // force init to happen in first loop
+            start = last = s->notes.end();
+            current_step = 0;
+            //pcm_play(get_data);
+        }
+    }
+
     void play_sequence(const int s_idx, bool(condition())) {
+        /*
         synth::reset_frame();
         sequence &s = sequences[s_idx];
 
@@ -218,6 +263,7 @@ namespace controller {
 
 play_sequence_done:
         write_blank_frames(BUFFER_LEN-ptr, ptr, condition);
+        */
     }
 
     void eval_with_params(int id, int note, double seconds, int length, float *buffer) {
