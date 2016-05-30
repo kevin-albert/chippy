@@ -1,40 +1,23 @@
-CC		= g++
-CFLAGS	= -std=c++11 -Ofast -c
-LDFLAGS	= -ldl -lcurses
-SRC		= main.cpp dj_view.cpp sequencer_view.cpp mixer_view.cpp ui.cpp \
-		  controller.cpp project.cpp synth_api.cpp pcm_wrapper.cpp expr.cpp util.cpp
-OBJ		= $(SRC:.cpp=.o)
-UNAME	= $(shell uname -s)
+include src/Makefile.inc
+
 EXE		= chippy
+LIB		= src/app/libapp.a src/util/libutil.a
 
-ifeq	($(UNAME),Linux)
-	LDFLAGS += -lasound
-endif
+$(EXE): lib
+	$(CXX) $(LDFLAGS) $(LIB) -o $@
 
-$(EXE): $(OBJ)
-	$(CC) $(LDFLAGS) $^ -o $@
+.PHONY: lib
+lib:
+	$(MAKE) -C src/app
+	$(MAKE) -C src/util
 
-install: $(EXE)
-	mkdir -p /opt/chippy_files
-	cp chippy /usr/local/bin
-
-wav_test: pcm_wrapper.cpp util.h
-	$(CC) -DWAV_TEST -std=c++11 $< -o $@
-
-project_debug: project_debug.cpp project.o
-	$(CC) -std=c++11 $^ -o $@
-
-deploy:
-	git push device master
-
-$(OBJ): %.o: %.cpp
-	$(CC) $(CFLAGS) $< -o $@
-
-include Makefile.deps
 
 clean:
-	rm -rf *.o $(EXE) wav_test project_debug Makefile.deps
-
-Makefile.deps:
-	$(CC) -std=c++11 -MM $(SRC) >Makefile.deps
-
+	rm -f $(EXE)
+	$(MAKE) -C src/app clean
+	$(MAKE) -C src/cmp clean
+	$(MAKE) -C src/pcm clean
+	$(MAKE) -C src/synth clean
+	$(MAKE) -C src/ui clean
+	$(MAKE) -C src/util clean
+	$(MAKE) -C src/views clean

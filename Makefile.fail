@@ -1,0 +1,31 @@
+CC			= g++
+CXX			= $(CC)
+CPPFLAGS	= -std=c++14 -Ofast -c
+LDFLAGS		= -ldl -lcurses
+
+UNAME		= $(shell uname -s)
+
+# EXE		= chippy
+
+ifeq	($(UNAME),Linux)
+	LDFLAGS += -lasound
+endif
+
+$(OBJ): %.o: %.cpp
+
+
+# $(EXE): $(OBJ)
+# 	$(CC) $(LDFLAGS) $^ -o $@
+
+deploy:
+	git push device master
+
+
+
+clean:
+	rm -rf *.o $(EXE) build
+
+include Makefile.deps
+
+Makefile.deps:
+	$(CPP) -std=c++11 -MM $(SRC) >Makefile.deps

@@ -1,7 +1,5 @@
 *.o
-a.out
-Makefile.deps
+*.deps
 *.so
+*.a
 chippy
-project_debug
-
